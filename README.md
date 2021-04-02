@@ -6,8 +6,11 @@ See also this inspiring [Onion Talk](https://www.youtube.com/watch?v=zpNgsU9o4ik
 
 ## Data
 
-We perform experiments on the FMA dataset, which was created by Michaël Defferrard, Kirell Benzi, Pierre Vandergheynst and Xavier Bresson ([paper](https://arxiv.org/abs/1612.01840), [GitHub](https://github.com/mdeff/fma)). 
-This repository requires the full dataset, `fma_full.zip` (879 GiB), to be downloaded and extracted ahead of time. The dataset contains 106,574 untrimmed tracks from 161 unbalanced genres.
+We perform experiments on the FMA dataset, which was created by Michaël Defferrard, Kirell Benzi, Pierre Vandergheynst and Xavier Bresson ([paper](https://arxiv.org/abs/1612.01840), [GitHub](https://github.com/mdeff/fma)). The dataset contains 106,574 untrimmed tracks in 161 unbalanced genres from the [Free Music Archive](https://freemusicarchive.org/).
+
+
+### Preparation
+This repository requires the full dataset, `fma_full.zip` (879 GiB), to be downloaded and extracted ahead of time. 
 
 ### Discussion
 The FMA dataset has a couple of advantages:
