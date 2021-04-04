@@ -4,6 +4,8 @@ Turn Album Covers Into Music If You Want To Do That For Some Reason.
 
 See also this inspiring [Onion Talk](https://www.youtube.com/watch?v=zpNgsU9o4ik).
 
+> I ask myself: What are two separate things? Can I turn one of those things into the other thing? And I did.
+
 ## Environment
 We've used [Miniconda3](https://docs.conda.io/en/latest/miniconda.html) for these experiments. Create a new environment from the [`environment.yml`](environment.yml):
 ```
