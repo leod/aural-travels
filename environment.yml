@@ -8,3 +8,4 @@ dependencies:
     - torchvision=0.9.1
     - pandas=1.2.3
     - jupyterlab
+    - requests
