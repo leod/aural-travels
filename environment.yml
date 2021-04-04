@@ -6,3 +6,5 @@ dependencies:
     - python=3.9
     - pytorch=1.8.1
     - torchvision=0.9.1
+    - pandas=1.2.3
+    - jupyterlab

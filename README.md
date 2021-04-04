@@ -20,7 +20,7 @@ The following files of the [FMA dataset](https://github.com/mdeff/fma) need to b
 - [`fma_full.zip`](https://os.unil.cloud.switch.ch/fma/fma_full.zip) (879 GiB)
 - [`fma_metadata.zip`](https://os.unil.cloud.switch.ch/fma/fma_metadata.zip) (342 MiB)
 
-Extract them into a directory, such that you have a `fma_full` directory and a `fma_metadata` directory next to each other.
+Extract them into a directory, such that you have a `fma_full` directory and a `fma_metadata` directory next to each other. We consider this directory to be the data directory throughout this repository.
 
 ### Discussion
 The FMA dataset has a couple of advantages:
