@@ -17,12 +17,21 @@ from aural_travels.data import fma
 
 def print_album_stats(albums):
     num_albums = len(albums)
+
     num_have_genre = len(albums[~albums['genre_top'].isnull()])
+    num_have_cover = len(albums[~albums['has_cover'].isnull()])
+    num_have_genre_cover = len(albums[~albums['genre_top'].isnull() \
+        & ~albums['has_cover'].isnull()])
+
     perc_have_genre = num_have_genre / num_albums * 100.0
+    perc_have_cover = num_have_cover / num_albums * 100.0
+    perc_have_genre_cover = num_have_genre_cover / num_albums * 100.0
 
     info = ('Statistics of album data:\n'
             f'    num_albums = {num_albums}\n'
-            f'    num_have_genre = {num_have_genre} ({perc_have_genre:.2f}%)')
+            f'    num_have_genre = {num_have_genre} ({perc_have_genre:.2f}%)\n'
+            f'    num_have_cover = {num_have_cover} ({perc_have_cover:.2f}%)\n'
+            f'    num_have_genre_cover = {num_have_genre_cover} ({perc_have_genre_cover:.2f}%)')
     logging.info(info)
 
 
@@ -128,10 +137,10 @@ def prepare_album_data(data_dir, output_file, album_cover_dir):
 
     download_album_covers(data_dir, album_cover_dir, albums)
 
-    print_album_stats(albums) 
-
     logging.info(f"Saving album metadata to `{output_file}'...")
     albums.to_csv(output_file)
+
+    print_album_stats(albums) 
 
     logging.info('All done')
 
