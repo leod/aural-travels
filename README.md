@@ -20,7 +20,17 @@ The following files of the [FMA dataset](https://github.com/mdeff/fma) need to b
 - [`fma_full.zip`](https://os.unil.cloud.switch.ch/fma/fma_full.zip) (879 GiB)
 - [`fma_metadata.zip`](https://os.unil.cloud.switch.ch/fma/fma_metadata.zip) (342 MiB)
 
-Extract them into a directory, such that you have a `fma_full` directory and a `fma_metadata` directory next to each other. We consider this directory to be the data directory throughout this repository.
+Extract them into a directory, such that you have a `fma_full` directory and a `fma_metadata` directory next to each other. This data directory needs to be specified at several points in this repository.
+
+Once the data has been downloaded and extracted, we need to enrich it with album-level information. The reason is that the FMA metadata is stored on track-level, while in this work we are more interested in album-level classification and prediction. Also, we need to download album covers, which are [not included](https://github.com/mdeff/fma/issues/51) in the FMA dataset.
+
+Let `$DATA_DIR` be your FMA data directory, then run the following command to add album-level information:
+```
+PYTHONPATH=. tools/prepare_album_data.py \
+    --data_dir $DATA_DIR \
+    --output_file $DATA_DIR/fma_metadata_albums.csv \
+    --album_cover_dir $DATA_DIR/fma_album_covers
+```
 
 ### Discussion
 The FMA dataset has a couple of advantages:
