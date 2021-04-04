@@ -19,9 +19,9 @@ def print_album_stats(albums):
     num_albums = len(albums)
 
     num_have_genre = len(albums[~albums['genre_top'].isnull()])
-    num_have_cover = len(albums[~albums['has_cover'].isnull()])
+    num_have_cover = len(albums[albums['has_cover'] == True])
     num_have_genre_cover = len(albums[~albums['genre_top'].isnull() \
-        & ~albums['has_cover'].isnull()])
+        & (albums['has_cover'] == True)])
 
     perc_have_genre = num_have_genre / num_albums * 100.0
     perc_have_cover = num_have_cover / num_albums * 100.0
