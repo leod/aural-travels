@@ -16,7 +16,15 @@ def initialize_model(model_name, num_classes, train_encoder, use_pretrained=True
     model_ft = None
     input_size = 0
 
-    if model_name == "resnet":
+    if model_name == "resnet50":
+        """ Resnet50 """
+        model_ft = models.resnet50(pretrained=use_pretrained)
+        set_parameter_requires_grad(model_ft, train_encoder)
+        num_ftrs = model_ft.fc.in_features
+        model_ft.fc = nn.Linear(num_ftrs, num_classes)
+        input_size = 224
+
+    elif model_name == "resnet18":
         """ Resnet18 """
         model_ft = models.resnet18(pretrained=use_pretrained)
         set_parameter_requires_grad(model_ft, train_encoder)

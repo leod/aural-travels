@@ -78,6 +78,8 @@ def get_image_path(data_dir, album_id):
 
 
 class GenrePredictionDataset(Dataset):
+    printed_info = set()
+
     def __init__(self,
                  data_dir,
                  subset,
@@ -95,11 +97,15 @@ class GenrePredictionDataset(Dataset):
         self.genre_to_idx = {name: idx for idx, name in enumerate(set(albums['genre_top']))}
         self.albums = albums
 
-        logging.info(f"Loaded album data from data_dir=`{data_dir}'")
-        logging.info(f'Found {len(albums)} albums (having cover and genre_top) in split="{split}", '
-                     f'subset="{subset}"')
-        logging.info(f'Genre distribution: \n{albums["genre_top"].value_counts(normalize=True)}')
-        logging.info(f'genre_to_idx={self.genre_to_idx}')
+        # Reduce logging noise a bit...
+        key = '|||'.join([data_dir, subset, split])
+        if key not in self.printed_info:
+            logging.info(f"Loaded album data from data_dir=`{data_dir}'")
+            logging.info(f'Found {len(albums)} albums (having cover and genre_top) in split="{split}", '
+                        f'subset="{subset}"')
+            logging.info(f'Genre distribution: \n{albums["genre_top"].value_counts(normalize=True)}')
+            logging.info(f'genre_to_idx={self.genre_to_idx}')
+            self.printed_info.add(key)
 
 
     def __len__(self):

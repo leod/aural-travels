@@ -13,6 +13,7 @@ from aural_travels.model import image_head
 from aural_travels.data import fma
 from aural_travels.train import classifier
 
+logging.basicConfig()
 logging.getLogger().setLevel(logging.INFO)
 
 logger = logging.getLogger(__name__)
@@ -79,6 +80,7 @@ def run(data_dir,
 def run_all(data_dir,
             subset,
             num_workers,
+            num_runs,
             batch_size,
             num_epochs,
             lr,
@@ -94,18 +96,30 @@ def run_all(data_dir,
                 f'    lr={lr}\n'
                 f'    momentum={momentum}')
 
-    for model_name in ['resnet', 'alexnet', 'vgg', 'squeezenet', 'densenet']:
-        val_acc_history = run(data_dir=data_dir,
-                              subset=subset,
-                              num_workers=num_workers,
-                              model_name=model_name,
-                              train_encoder=True,
-                              use_pretrained=True,
-                              batch_size=batch_size,
-                              num_epochs=num_epochs,
-                              lr=lr,
-                              momentum=momentum,
-                              device=device)
+    model_top_val_accs = {}
+
+    for model_name in ['resnet50', 'resnet18', 'alexnet', 'vgg', 'squeezenet', 'densenet']:
+        top_val_accs = []
+        for _ in range(num_runs):
+            val_acc_history = run(data_dir=data_dir,
+                                subset=subset,
+                                num_workers=num_workers,
+                                model_name=model_name,
+                                train_encoder=True,
+                                use_pretrained=True,
+                                batch_size=batch_size,
+                                num_epochs=num_epochs,
+                                lr=lr,
+                                momentum=momentum,
+                                device=device)
+            top_val_accs.append(max(val_acc_history))
+
+        model_top_val_accs[model_name] = top_val_accs
+
+    logger.info('Top validation accuracies: ')
+    for model_name, top_val_accs in model_top_val_accs.items():
+        for acc in top_val_accs:
+            logger.info(f'{model_name}: {acc:.4f}')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
@@ -115,15 +129,19 @@ if __name__ == '__main__':
     parser.add_argument('--num_workers',
                         help='Number of worker processes to use for loading data',
                         type=int,
-                        default=16)
+                        default=32)
     parser.add_argument('--subset',
                         help='Subset of the data to use',
                         choices=['small', 'medium', 'large'],
                         default='medium')
+    parser.add_argument('--num_runs',
+                        help='Number of runs to perform per model',
+                        type=int,
+                        default=3)
     parser.add_argument('--batch_size',
                         help='Batch size for training and validation',
                         type=int,
-                        default=256)
+                        default=128)
     parser.add_argument('--num_epochs',
                         help='Number of training epochs',
                         type=int,
