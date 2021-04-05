@@ -2,15 +2,22 @@
 
 import os
 import ast
+import logging
 
 import pandas as pd
+
+from torch.utils.data import Dataset, DataLoader
+
+logger = logging.getLogger(__name__)
 
 # Based on:
 # https://github.com/mdeff/fma/blob/e3d369c49bce73abe467ccffe4dbd3d94c27d7fd/utils.py
 
+
 def load_genres(data_dir):
     filepath = os.path.join(data_dir, 'fma_metadata', 'genres.csv')
     return pd.read_csv(filepath, index_col=0)
+
 
 def load_tracks(data_dir):
     filepath = os.path.join(data_dir, 'fma_metadata', 'tracks.csv')
@@ -46,3 +53,27 @@ def load_tracks(data_dir):
         pd.CategoricalDtype(categories=SUBSETS, ordered=True))
 
     return tracks
+
+
+def load_albums(data_dir):
+    filepath = os.path.join(data_dir, 'fma_metadata_albums.csv')
+    albums = pd.read_csv(filepath, index_col=0)
+
+    CAT_COLUMNS = ['genre_top']
+    SUBSETS = ['small', 'medium', 'large']
+    
+    for column in CAT_COLUMNS:
+        albums[column] = albums[column].astype('category')
+
+    albums['subset'] = albums['subset'].astype(
+        pd.CategoricalDtype(categories=SUBSETS, ordered=True))
+
+    return albums
+
+
+class GenrePredictionDataset(Dataset):
+    def __init__(self,
+                 data_dir,
+                 split,
+                 subset):
+        ...

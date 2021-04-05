@@ -18,10 +18,11 @@ from aural_travels.data import fma
 def print_album_stats(albums):
     num_albums = len(albums)
 
+    albums_genre_cover = albums[~albums['genre_top'].isnull() & (albums['has_cover'] == True)]
+
     num_have_genre = len(albums[~albums['genre_top'].isnull()])
     num_have_cover = len(albums[albums['has_cover'] == True])
-    num_have_genre_cover = len(albums[~albums['genre_top'].isnull() \
-        & (albums['has_cover'] == True)])
+    num_have_genre_cover = len(albums_genre_cover)
 
     perc_have_genre = num_have_genre / num_albums * 100.0
     perc_have_cover = num_have_cover / num_albums * 100.0
@@ -120,6 +121,8 @@ def prepare_album_data(data_dir, output_file, album_cover_dir):
             'title': album_title,
             'genre_top': genre_top,
             'track_ids': list(album_tracks.index),
+            'subset': album_tracks['set', 'subset'].iloc[0],
+            'split': album_tracks['set', 'split'].iloc[0],
         })
         
         # Log some random samples (0.1%) for inspection
