@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """ Train various image classifiers for predicting album genre from cover image. """
 
+import sys
+import os
 import logging
 import argparse
+import git
 
 import torch
 from torch.optim import SGD
@@ -87,8 +90,12 @@ def run_all(data_dir,
             momentum):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+    repo = git.Repo(os.path.dirname(sys.argv[0]), search_parent_directories=True)
+
     logger.info(f'PyTorch version: {torch.__version__}')
     logger.info(f'Torchvision version: {torchvision.__version__}')
+    logger.info(f'aural-travels repo commit: {repo.head.object.hexsha}')
+    logger.info(f'aural-travels repo dirty: {repo.is_dirty()}')
     logger.info(f'Device: {device}')
     logger.info('Params: \n'
                 f'    batch_size={batch_size}\n'
