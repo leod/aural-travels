@@ -38,8 +38,8 @@ Most albums have a cover image, but only about half of them have genre metadata:
 ```
 num_albums = 14854
 num_have_genre = 7273 (48.96%)
-num_have_cover = 14395 (96.91%)
-num_have_genre_cover = 7149 (48.13%)
+num_have_cover = 13509 (90.95%)
+num_have_genre_cover = 6531 (43.97%)
 ```
 
 ### Discussion
