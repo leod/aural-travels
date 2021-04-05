@@ -153,7 +153,7 @@ if __name__ == '__main__':
  
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--data_dir',
-                        help='Directory to the FMA dataset',
+                        help='Directory of the FMA dataset',
                         required=True)
     parser.add_argument('--output_file',
                         help='File to write album metadata to',

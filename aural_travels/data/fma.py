@@ -5,6 +5,7 @@ import ast
 import logging
 
 import pandas as pd
+from PIL import Image
 
 from torch.utils.data import Dataset, DataLoader
 
@@ -72,20 +73,45 @@ def load_albums(data_dir):
     return albums
 
 
+def get_image_path(data_dir, album_id):
+    return os.path.join(data_dir, 'fma_album_covers', f'{album_id}.jpg')
+
+
 class GenrePredictionDataset(Dataset):
     def __init__(self,
                  data_dir,
                  subset,
-                 split):
+                 split,
+                 input_transform):
         albums = load_albums(data_dir)
+
         albums = albums[albums['split'] == split]
         albums = albums[albums['subset'] <= subset]
-        albums = albums[~albums['has_cover'].isnull()]
+        albums = albums[albums['has_cover'] == True]
         albums = albums[~albums['genre_top'].isnull()]
 
-        logging.info(f'Loaded album data from data_dir=`{data_dir}')
-        logging.info(f'Found {len(albums)} albums (having cover and genre_top) in split={split}, '
-                     f'subset={subset}')
-        logging.info(f'Genre distribution: {albums["genre_top"].value_counts(normalize=True)}')
-
+        self.data_dir = data_dir
+        self.input_transform = input_transform
+        self.genre_to_idx = {name: idx for idx, name in enumerate(set(albums['genre_top']))}
         self.albums = albums
+
+        logging.info(f"Loaded album data from data_dir=`{data_dir}'")
+        logging.info(f'Found {len(albums)} albums (having cover and genre_top) in split="{split}", '
+                     f'subset="{subset}"')
+        logging.info(f'Genre distribution: \n{albums["genre_top"].value_counts(normalize=True)}')
+        logging.info(f'genre_to_idx={self.genre_to_idx}')
+
+
+    def __len__(self):
+        return len(self.albums)
+
+    def __getitem__(self, idx):
+        row = self.albums.iloc[idx]
+
+        genre_idx = self.genre_to_idx[row.genre_top]
+        image = Image.open(get_image_path(self.data_dir, row.name))
+
+        # Remove alpha channel if present
+        image = image.convert('RGB')
+
+        return self.input_transform(image), genre_idx
