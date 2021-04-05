@@ -9,6 +9,7 @@ import pandas as pd
 from torch.utils.data import Dataset, DataLoader
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 # Based on:
 # https://github.com/mdeff/fma/blob/e3d369c49bce73abe467ccffe4dbd3d94c27d7fd/utils.py
@@ -74,6 +75,17 @@ def load_albums(data_dir):
 class GenrePredictionDataset(Dataset):
     def __init__(self,
                  data_dir,
-                 split,
-                 subset):
-        ...
+                 subset,
+                 split):
+        albums = load_albums(data_dir)
+        albums = albums[albums['split'] == split]
+        albums = albums[albums['subset'] <= subset]
+        albums = albums[~albums['has_cover'].isnull()]
+        albums = albums[~albums['genre_top'].isnull()]
+
+        logging.info(f'Loaded album data from data_dir=`{data_dir}')
+        logging.info(f'Found {len(albums)} albums (having cover and genre_top) in split={split}, '
+                     f'subset={subset}')
+        logging.info(f'Genre distribution: {albums["genre_top"].value_counts(normalize=True)}')
+
+        self.albums = albums
