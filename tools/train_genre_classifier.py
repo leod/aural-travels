@@ -52,11 +52,12 @@ def load_data(data_dir, subset, num_workers, batch_size, input_size):
 def create_optimizer(params_to_update,
                      lr,
                      momentum,
+                     weight_decay,
                      optimizer):
     if optimizer == 'SGD':
-        return SGD(params_to_update, lr=lr, momentum=momentum)
+        return SGD(params_to_update, lr=lr, momentum=momentum, weight_decay=weight_decay)
     elif optimizer == 'AdamW':
-        return AdamW(params_to_update, lr=lr)
+        return AdamW(params_to_update, lr=lr, weight_decay=weight_decay)
 
 def run(data_dir,
         subset,
@@ -68,6 +69,7 @@ def run(data_dir,
         num_epochs,
         lr,
         momentum,
+        weight_decay,
         optimizer,
         device):
     logger.info(f'Model name: {model_name}')
@@ -82,7 +84,7 @@ def run(data_dir,
     num_trainable = sum(p.numel() for p in params_to_update)
     logger.info(f'Number of trainable parameters: {num_trainable}')
 
-    optimizer = create_optimizer(params_to_update, lr, momentum, optimizer)
+    optimizer = create_optimizer(params_to_update, lr, momentum, weight_decay, optimizer)
 
     _, val_acc_history = classifier.train(model,
                                           dataloaders,
@@ -99,6 +101,7 @@ def run_all(data_dir,
             num_epochs,
             lr,
             momentum,
+            weight_decay,
             optimizer):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -114,6 +117,7 @@ def run_all(data_dir,
                 f'    num_epochs={num_epochs}\n'
                 f'    lr={lr}\n'
                 f'    momentum={momentum}\n'
+                f'    weight_decay={weight_decay}\n'
                 f'    optimizer={optimizer}')
 
     model_top_val_accs = {}
@@ -131,6 +135,7 @@ def run_all(data_dir,
                                   num_epochs=num_epochs,
                                   lr=lr,
                                   momentum=momentum,
+                                  weight_decay=weight_decay,
                                   optimizer=optimizer,
                                   device=device)
             top_val_accs.append(max(val_acc_history))
@@ -175,6 +180,10 @@ if __name__ == '__main__':
                         help='Momentum for the SGD optimizer',
                         type=float,
                         default=0.9)
+    parser.add_argument('--weight_decay',
+                        help='Weight decay scaling factor',
+                        type=float,
+                        default=0.0)
     parser.add_argument('--optimizer',
                         help='Optimizer to use',
                         choices=['SGD', 'AdamW'],
