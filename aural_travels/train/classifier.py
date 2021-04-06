@@ -36,6 +36,8 @@ def train(model, dataloaders, optimizer, num_epochs, weighted_loss, device):
 
             running_loss = 0.0
             running_corrects = 0
+            confusion_matrix = torch.zeros(len(dataloaders[phase].dataset.genre_to_idx),
+                                           len(dataloaders[phase].dataset.genre_to_idx))
 
             for inputs, labels in dataloaders[phase]:
                 inputs = inputs.to(device)
@@ -55,14 +57,21 @@ def train(model, dataloaders, optimizer, num_epochs, weighted_loss, device):
                 running_loss += loss.item() * inputs.size(0)
                 running_corrects += torch.sum(preds == labels.data)
 
+                for l, p in zip(labels.view(-1), preds.view(-1)):
+                    confusion_matrix[l.long(), p.long()] += 1
+
             epoch_loss = running_loss / len(dataloaders[phase].dataset)
             epoch_acc = running_corrects.double() / len(dataloaders[phase].dataset)
 
             logger.info('{} loss: {:.4f} acc: {:.4f}'.format(phase, epoch_loss, epoch_acc))
+            for genre_name, genre_idx in dataloaders[phase].dataset.genre_to_idx.items():
+                genre_acc = confusion_matrix[genre_idx, genre_idx] / confusion_matrix[genre_idx, :].sum()
+                logger.info(f'    {genre_name}: {genre_acc:.4f} acc')
 
             if phase == 'validation' and epoch_acc > best_acc:
                 best_acc = epoch_acc
                 best_model_weights = copy.deepcopy(model.state_dict())
+
             if phase == 'validation':
                 val_acc_history.append(epoch_acc)
 
