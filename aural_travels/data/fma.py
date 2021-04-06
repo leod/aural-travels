@@ -86,20 +86,21 @@ class GenrePredictionDataset(Dataset):
                  split,
                  input_transform):
         albums = load_albums(data_dir)
-
-        albums = albums[albums['split'] == split]
-        albums = albums[albums['subset'] <= subset]
         albums = albums[albums['has_cover'] == True]
         albums = albums[~albums['genre_top'].isnull()]
 
         self.data_dir = data_dir
         self.input_transform = input_transform
         self.genre_to_idx = {name: idx for idx, name in enumerate(set(albums['genre_top']))}
-        self.albums = albums
+        self.idx_to_genre = {idx: name for name, idx in self.genre_to_idx.items()}
 
         self.class_weights = [0] * len(self.genre_to_idx)
         for genre_name, genre_idx in self.genre_to_idx.items():
             self.class_weights[genre_idx] = 1.0 / len(albums[albums["genre_top"] == genre_name])
+
+        albums = albums[albums['split'] == split]
+        albums = albums[albums['subset'] <= subset]
+        self.albums = albums
 
         # Reduce logging noise a bit...
         key = '|||'.join([data_dir, subset, split])
