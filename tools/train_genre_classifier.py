@@ -71,6 +71,7 @@ def run(data_dir,
         momentum,
         weight_decay,
         optimizer,
+        weighted_loss,
         device):
     logger.info(f'Model name: {model_name}')
     model, input_size = image_head.initialize_model(model_name,
@@ -90,6 +91,7 @@ def run(data_dir,
                                           dataloaders,
                                           optimizer,
                                           num_epochs,
+                                          weighted_loss,
                                           device)
     return val_acc_history
 
@@ -102,7 +104,8 @@ def run_all(data_dir,
             lr,
             momentum,
             weight_decay,
-            optimizer):
+            optimizer,
+            weighted_loss):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     repo = git.Repo(os.path.dirname(sys.argv[0]), search_parent_directories=True)
@@ -118,7 +121,8 @@ def run_all(data_dir,
                 f'    lr={lr}\n'
                 f'    momentum={momentum}\n'
                 f'    weight_decay={weight_decay}\n'
-                f'    optimizer={optimizer}')
+                f'    optimizer={optimizer}\n'
+                f'    weighted_loss={weighted_loss}')
 
     model_top_val_accs = {}
 
@@ -137,6 +141,7 @@ def run_all(data_dir,
                                   momentum=momentum,
                                   weight_decay=weight_decay,
                                   optimizer=optimizer,
+                                  weighted_loss=weighted_loss,
                                   device=device)
             top_val_accs.append(max(val_acc_history))
 
@@ -188,6 +193,9 @@ if __name__ == '__main__':
                         help='Optimizer to use',
                         choices=['SGD', 'AdamW'],
                         default='SGD')
+    parser.add_argument('--weighted_loss',
+                        help='Apply weights based on inverse class-frequency to loss',
+                        action='store_true')
 
     args = parser.parse_args()
     run_all(**vars(args)) 

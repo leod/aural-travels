@@ -8,7 +8,7 @@ from torch import nn
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-def train(model, dataloaders, optimizer, num_epochs, device):
+def train(model, dataloaders, optimizer, num_epochs, weighted_loss, device):
     model = model.to(device)
 
     start_time = time.time()
@@ -17,6 +17,13 @@ def train(model, dataloaders, optimizer, num_epochs, device):
     
     best_model_weights = copy.deepcopy(model.state_dict())
     best_acc = 0.0
+
+    if weighted_loss:
+        weight = torch.tensor(dataloaders['training'].dataset.class_weights)
+        weight = weight.to(device)
+    else:
+        weight = None
+    loss_fct = nn.CrossEntropyLoss(weight=weight)
 
     for epoch in range(num_epochs):
         logger.info('Epoch {}/{}'.format(epoch, num_epochs - 1))
@@ -38,7 +45,7 @@ def train(model, dataloaders, optimizer, num_epochs, device):
 
                 with torch.set_grad_enabled(phase == 'training'):
                     outputs = model(inputs)
-                    loss = nn.CrossEntropyLoss()(outputs, labels)
+                    loss = loss_fct(outputs, labels)
                     _, preds = torch.max(outputs, 1)
 
                     if phase == 'training':

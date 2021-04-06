@@ -97,16 +97,20 @@ class GenrePredictionDataset(Dataset):
         self.genre_to_idx = {name: idx for idx, name in enumerate(set(albums['genre_top']))}
         self.albums = albums
 
+        self.class_weights = [0] * len(self.genre_to_idx)
+        for genre_name, genre_idx in self.genre_to_idx.items():
+            self.class_weights[genre_idx] = 1.0 / len(albums[albums["genre_top"] == genre_name])
+
         # Reduce logging noise a bit...
         key = '|||'.join([data_dir, subset, split])
         if key not in self.printed_info:
             logging.info(f"Loaded album data from data_dir=`{data_dir}'")
             logging.info(f'Found {len(albums)} albums (having cover and genre_top) in split="{split}", '
-                        f'subset="{subset}"')
+                         f'subset="{subset}"')
             logging.info(f'Genre distribution: \n{albums["genre_top"].value_counts(normalize=True)}')
+            logging.info(f'Class weights: {self.class_weights}')
             logging.info(f'genre_to_idx={self.genre_to_idx}')
             self.printed_info.add(key)
-
 
     def __len__(self):
         return len(self.albums)
