@@ -3,6 +3,7 @@
 import os
 import ast
 import logging
+import math
 
 import pandas as pd
 from PIL import Image
@@ -89,29 +90,41 @@ class GenrePredictionDataset(Dataset):
         albums = albums[albums['has_cover'] == True]
         albums = albums[~albums['genre_top'].isnull()]
 
+        self.albums = albums
+        self.albums = self.albums[self.albums['split'] == split]
+        self.albums = self.albums[albums['subset'] <= subset]
+
         self.data_dir = data_dir
         self.input_transform = input_transform
-        self.genre_to_idx = {name: idx for idx, name in enumerate(set(albums['genre_top']))}
-        self.idx_to_genre = {idx: name for name, idx in self.genre_to_idx.items()}
+
+        self.genre_to_idx = {
+            name: idx
+            for idx, name
+            in enumerate(albums['genre_top'].value_counts().index)
+        }
+        self.idx_to_genre = {
+            idx: name
+            for name, idx
+            in self.genre_to_idx.items()
+        }
 
         self.class_weights = [0] * len(self.genre_to_idx)
         for genre_name, genre_idx in self.genre_to_idx.items():
-            self.class_weights[genre_idx] = 1.0 / len(albums[albums["genre_top"] == genre_name])
-
-        albums = albums[albums['split'] == split]
-        albums = albums[albums['subset'] <= subset]
-        self.albums = albums
+            genre_count = len(albums[albums["genre_top"] == genre_name])
+            self.class_weights[genre_idx] = 1.0 / genre_count
 
         # Reduce logging noise a bit...
         key = '|||'.join([data_dir, subset, split])
         if key not in self.printed_info:
+            self.printed_info.add(key)
+
             logging.info(f"Loaded album data from data_dir=`{data_dir}'")
-            logging.info(f'Found {len(albums)} albums (having cover and genre_top) in split="{split}", '
-                         f'subset="{subset}"')
-            logging.info(f'Genre distribution: \n{albums["genre_top"].value_counts(normalize=True)}')
+            logging.info(f'Found {len(self.albums)} albums (having cover and genre_top) in '
+                         f'split="{split}", subset="{subset}"')
+            logging.info(f'Genre distribution: \n'
+                         f'albums["genre_top"].value_counts(normalize=True)')
             logging.info(f'Class weights: {self.class_weights}')
             logging.info(f'genre_to_idx={self.genre_to_idx}')
-            self.printed_info.add(key)
 
     def __len__(self):
         return len(self.albums)

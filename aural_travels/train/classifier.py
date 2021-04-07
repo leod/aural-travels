@@ -65,8 +65,10 @@ def train(model, dataloaders, optimizer, num_epochs, weighted_loss, device):
 
             logger.info('{} loss: {:.4f} acc: {:.4f}'.format(phase, epoch_loss, epoch_acc))
             for genre_name, genre_idx in dataloaders[phase].dataset.genre_to_idx.items():
-                genre_acc = confusion_matrix[genre_idx, genre_idx] / confusion_matrix[genre_idx, :].sum()
-                logger.info(f'    {genre_name}: {genre_acc:.4f} acc')
+                correct = confusion_matrix[genre_idx, genre_idx].long()
+                total = confusion_matrix[genre_idx, :].sum().long()
+                genre_acc = correct / total
+                logger.info(f'    {genre_name:<20}: {correct:<4} / {total:<4} = {genre_acc:.4f} acc')
 
             if phase == 'validation' and epoch_acc > best_acc:
                 best_acc = epoch_acc
