@@ -26,7 +26,7 @@ def train(model, dataloaders, optimizer, num_epochs, weighted_loss, device):
     loss_fct = nn.CrossEntropyLoss(weight=weight)
 
     for epoch in range(num_epochs):
-        logger.info('Epoch {}/{}'.format(epoch, num_epochs - 1))
+        logger.info(f'Epoch {epoch+1}/{num_epochs}')
 
         for phase in ['training', 'validation']:
             if phase == 'training':
@@ -63,12 +63,19 @@ def train(model, dataloaders, optimizer, num_epochs, weighted_loss, device):
             epoch_loss = running_loss / len(dataloaders[phase].dataset)
             epoch_acc = running_corrects.double() / len(dataloaders[phase].dataset)
 
-            logger.info('{} loss: {:.4f} acc: {:.4f}'.format(phase, epoch_loss, epoch_acc))
+            logger.info(f'{phase} loss: {epoch_loss:.4f} acc: {epoch_acc*100:.2f}')
             for genre_name, genre_idx in dataloaders[phase].dataset.genre_to_idx.items():
                 correct = confusion_matrix[genre_idx, genre_idx].long()
                 total = confusion_matrix[genre_idx, :].sum().long()
                 genre_acc = correct / total
-                logger.info(f'    {genre_name:<20}: {correct:<4} / {total:<4} = {genre_acc:.4f} acc')
+                logger.info(f'    {genre_name:<20}: {correct:<4} / {total:<4} ' +
+                    f'= {genre_acc*100:5.2f} acc. ' +
+                    ', '.join(f'{other_name:<20} {confusion_matrix[genre_idx, other_idx]/total*100:5.2f}'
+                              for other_name, other_idx
+                              in sorted(dataloaders[phase].dataset.genre_to_idx.items(),
+                                        key=lambda x: confusion_matrix[genre_idx, x[1]].long(),
+                                        reverse=True)[:4]
+                              if confusion_matrix[genre_idx, other_idx]/total > 0.05))
 
             if phase == 'validation' and epoch_acc > best_acc:
                 best_acc = epoch_acc
@@ -78,8 +85,8 @@ def train(model, dataloaders, optimizer, num_epochs, weighted_loss, device):
                 val_acc_history.append(epoch_acc)
 
     time_elapsed = time.time() - start_time
-    logger.info('Training complete in {:.0f}m{:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
-    logger.info('Best validation acc: {:4f}'.format(best_acc))
+    logger.info(f'Training complete in {time_elapsed//60:.0f}m{time_elapsed%60:.0f}s')
+    logger.info(f'Best validation acc: {best_acc*100:.2f}')
 
     model.load_state_dict(best_model_weights)
 

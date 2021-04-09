@@ -8,6 +8,7 @@ import math
 import pandas as pd
 from PIL import Image
 
+import torch
 from torch.utils.data import Dataset, DataLoader
 
 logger = logging.getLogger(__name__)
@@ -92,7 +93,7 @@ class GenrePredictionDataset(Dataset):
 
         self.albums = albums
         self.albums = self.albums[self.albums['split'] == split]
-        self.albums = self.albums[albums['subset'] <= subset]
+        self.albums = self.albums[self.albums['subset'] <= subset]
 
         self.data_dir = data_dir
         self.input_transform = input_transform
@@ -110,8 +111,12 @@ class GenrePredictionDataset(Dataset):
 
         self.class_weights = [0] * len(self.genre_to_idx)
         for genre_name, genre_idx in self.genre_to_idx.items():
-            genre_count = len(albums[albums["genre_top"] == genre_name])
+            genre_count = len(self.albums[self.albums["genre_top"] == genre_name])
             self.class_weights[genre_idx] = 1.0 / genre_count
+
+        self.example_weights = \
+            torch.tensor([self.class_weights[self.genre_to_idx[row.genre_top]]
+                          for row in self.albums.itertuples()])
 
         # Reduce logging noise a bit...
         key = '|||'.join([data_dir, subset, split])
@@ -122,7 +127,7 @@ class GenrePredictionDataset(Dataset):
             logging.info(f'Found {len(self.albums)} albums (having cover and genre_top) in '
                          f'split="{split}", subset="{subset}"')
             logging.info(f'Genre distribution: \n'
-                         f'albums["genre_top"].value_counts(normalize=True)')
+                         f'{albums["genre_top"].value_counts(normalize=True)}')
             logging.info(f'Class weights: {self.class_weights}')
             logging.info(f'genre_to_idx={self.genre_to_idx}')
 
