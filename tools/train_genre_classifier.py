@@ -12,7 +12,7 @@ from torch.optim import SGD, AdamW
 from torch.utils.data import DataLoader, WeightedRandomSampler
 import torchvision
 
-from aural_travels.model import image_head
+from aural_travels.model import image
 from aural_travels.data import fma
 from aural_travels.train import classifier
 
@@ -30,8 +30,8 @@ def load_data(data_dir,
               batch_size,
               input_size,
               weighted_data):
-    train_transform = image_head.get_data_transform(input_size, 'training')
-    val_transform = image_head.get_data_transform(input_size, 'validation')
+    train_transform = image.get_data_transform(input_size, 'training')
+    val_transform = image.get_data_transform(input_size, 'validation')
     train_data = fma.GenrePredictionDataset(data_dir,
                                             subset,
                                             split='training',
@@ -91,10 +91,10 @@ def run(data_dir,
         weighted_data,
         device):
     logger.info(f'Model name: {model_name}')
-    model, input_size = image_head.initialize_model(model_name,
-                                                    NUM_CLASSES,
-                                                    train_encoder,
-                                                    use_pretrained)
+    model, input_size = image.initialize_model(model_name,
+                                               NUM_CLASSES,
+                                               train_encoder,
+                                               use_pretrained)
 
     dataloaders = load_data(data_dir,
                             subset,
