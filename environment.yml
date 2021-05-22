@@ -12,3 +12,6 @@ dependencies:
     - requests
     - pillow
     - gitpython
+    - mutagen
+    - pip:
+        - git+https://github.com/leod/scdata.git#egg=scdata
