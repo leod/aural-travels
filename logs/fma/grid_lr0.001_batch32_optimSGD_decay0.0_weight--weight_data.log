@@ -1,0 +1,11 @@
+usage: train_genre_classifier.py [-h] --data_dir DATA_DIR
+                                 [--num_workers NUM_WORKERS]
+                                 [--subset {small,medium,large}]
+                                 [--num_runs NUM_RUNS]
+                                 [--batch_size BATCH_SIZE]
+                                 [--num_epochs NUM_EPOCHS] [--lr LR]
+                                 [--momentum MOMENTUM]
+                                 [--weight_decay WEIGHT_DECAY]
+                                 [--optimizer {SGD,AdamW}] [--weighted_loss]
+                                 [--weighted_data]
+train_genre_classifier.py: error: unrecognized arguments: --weight_data
