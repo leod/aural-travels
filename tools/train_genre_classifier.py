@@ -5,6 +5,7 @@ import sys
 import os
 import logging
 import argparse
+import json
 import git
 
 import torch
@@ -13,7 +14,7 @@ from torch.utils.data import DataLoader, WeightedRandomSampler
 import torchvision
 
 from aural_travels.model import image
-from aural_travels.data import fma
+from aural_travels.data import fma, soundcloud
 from aural_travels.train import classifier
 
 logging.basicConfig()
@@ -22,24 +23,34 @@ logging.getLogger().setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-NUM_CLASSES = 16
 
-def load_data(data_dir,
-              subset,
+def load_data(fma_data_dir,
+              fma_subset,
+              soundcloud_data_dir,
+              dataset,
               num_workers,
               batch_size,
               input_size,
               weighted_data):
     train_transform = image.get_data_transform(input_size, 'training')
     val_transform = image.get_data_transform(input_size, 'validation')
-    train_data = fma.GenrePredictionDataset(data_dir,
-                                            subset,
-                                            split='training',
-                                            input_transform=train_transform)
-    val_data = fma.GenrePredictionDataset(data_dir,
-                                          subset,
-                                          split='validation',
-                                          input_transform=val_transform)
+
+    if dataset == 'fma':
+        train_data = fma.GenrePredictionDataset(fma_data_dir,
+                                                fma_subset,
+                                                split='training',
+                                                input_transform=train_transform)
+        val_data = fma.GenrePredictionDataset(fma_data_dir,
+                                              fma_subset,
+                                              split='validation',
+                                              input_transform=val_transform)
+    else:
+        train_data = soundcloud.GenrePredictionDataset(soundcloud_data_dir,
+                                                       split='train',
+                                                       input_transform=train_transform)
+        val_data = soundcloud.GenrePredictionDataset(soundcloud_data_dir,
+                                                     split='dev',
+                                                     input_transform=val_transform)
 
     if weighted_data:
         sampler = WeightedRandomSampler(weights=train_data.example_weights,
@@ -75,60 +86,44 @@ def create_optimizer(params_to_update,
     elif optimizer == 'AdamW':
         return AdamW(params_to_update, lr=lr, weight_decay=weight_decay)
 
-def run(data_dir,
-        subset,
-        num_workers,
-        model_name,
-        train_encoder,
-        use_pretrained,
-        batch_size,
-        num_epochs,
-        lr,
-        momentum,
-        weight_decay,
-        optimizer,
-        weighted_loss,
-        weighted_data,
-        device):
-    logger.info(f'Model name: {model_name}')
-    model, input_size = image.initialize_model(model_name,
-                                               NUM_CLASSES,
-                                               train_encoder,
-                                               use_pretrained)
 
-    dataloaders = load_data(data_dir,
-                            subset,
-                            num_workers,
-                            batch_size,
-                            input_size,
-                            weighted_data)
+def run(params, device):
+    logger.info(f'Model name: {params["model_name"]}')
+
+    dataloaders = load_data(fma_data_dir=params['fma_data_dir'],
+                            fma_subset=params['fma_subset'],
+                            soundcloud_data_dir=params['soundcloud_data_dir'],
+                            dataset=params['dataset'],
+                            num_workers=params['num_workers'],
+                            batch_size=params['batch_size'],
+                            input_size=image.INPUT_SIZE[params['model_name']],
+                            weighted_data=params['weighted_data'])
+
+    model = image.initialize_model(params['model_name'],
+                                   dataloaders['training'].dataset.num_classes(),
+                                   train_encoder=True,
+                                   use_pretrained=True)
 
     params_to_update = [param for param in model.parameters() if param.requires_grad]
     num_trainable = sum(p.numel() for p in params_to_update)
     logger.info(f'Number of trainable parameters: {num_trainable}')
 
-    optimizer = create_optimizer(params_to_update, lr, momentum, weight_decay, optimizer)
+    optimizer = create_optimizer(params_to_update,
+                                 lr=params['lr'],
+                                 momentum=params['momentum'],
+                                 weight_decay=params['weight_decay'],
+                                 optimizer=params['optimizer'])
 
     _, val_acc_history = classifier.train(model,
                                           dataloaders,
                                           optimizer,
-                                          num_epochs,
-                                          weighted_loss,
-                                          device)
+                                          num_epochs=params['num_epochs'],
+                                          weighted_loss=params['weighted_loss'],
+                                          device=device)
     return val_acc_history
 
-def run_all(data_dir,
-            subset,
-            num_workers,
-            num_runs,
-            batch_size,
-            num_epochs,
-            lr,
-            momentum,
-            weight_decay,
-            optimizer,
-            weighted_loss,
-            weighted_data):
+
+def run_all(params):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     repo = git.Repo(os.path.dirname(sys.argv[0]), search_parent_directories=True)
@@ -138,36 +133,14 @@ def run_all(data_dir,
     logger.info(f'aural-travels repo commit: {repo.head.object.hexsha}')
     logger.info(f'aural-travels repo dirty: {repo.is_dirty()}')
     logger.info(f'Device: {device}')
-    logger.info('Params: \n'
-                f'    batch_size={batch_size}\n'
-                f'    num_epochs={num_epochs}\n'
-                f'    lr={lr}\n'
-                f'    momentum={momentum}\n'
-                f'    weight_decay={weight_decay}\n'
-                f'    optimizer={optimizer}\n'
-                f'    weighted_loss={weighted_loss}\n'
-                f'    weighted_data={weighted_data}')
+    logger.info(f'Params: {json.dumps(params, indent=4)}\n')
 
     model_top_val_accs = {}
 
     for model_name in ['resnet50', 'resnet18', 'alexnet', 'vgg', 'squeezenet', 'densenet']:
         top_val_accs = []
-        for _ in range(num_runs):
-            val_acc_history = run(data_dir=data_dir,
-                                  subset=subset,
-                                  num_workers=num_workers,
-                                  model_name=model_name,
-                                  train_encoder=True,
-                                  use_pretrained=True,
-                                  batch_size=batch_size,
-                                  num_epochs=num_epochs,
-                                  lr=lr,
-                                  momentum=momentum,
-                                  weight_decay=weight_decay,
-                                  optimizer=optimizer,
-                                  weighted_loss=weighted_loss,
-                                  weighted_data=weighted_data,
-                                  device=device)
+        for _ in range(params['num_runs']):
+            val_acc_history = run({'model_name': model_name, **params}, device)
             top_val_accs.append(max(val_acc_history))
 
         model_top_val_accs[model_name] = top_val_accs
@@ -177,19 +150,25 @@ def run_all(data_dir,
         for acc in top_val_accs:
             logger.info(f'{model_name}: {acc:.4f}')
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--data_dir',
-                        help='Directory of the FMA dataset',
+    parser.add_argument('--fma_data_dir',
+                        help='Directory of the FMA dataset')
+    parser.add_argument('--fma_subset',
+                        help='Subset of the FMA data to use',
+                        choices=['small', 'medium', 'large'],
+                        default='medium')
+    parser.add_argument('--soundcloud_data_dir',
+                        help='Directory of the SoundCloud dataset')
+    parser.add_argument('--dataset',
+                        help='Which dataset to train on',
+                        choices=['fma', 'soundcloud'],
                         required=True)
     parser.add_argument('--num_workers',
                         help='Number of worker processes to use for loading data',
                         type=int,
                         default=32)
-    parser.add_argument('--subset',
-                        help='Subset of the data to use',
-                        choices=['small', 'medium', 'large'],
-                        default='medium')
     parser.add_argument('--num_runs',
                         help='Number of runs to perform per model',
                         type=int,
@@ -226,4 +205,4 @@ if __name__ == '__main__':
                         action='store_true')
 
     args = parser.parse_args()
-    run_all(**vars(args)) 
+    run_all(vars(args)) 

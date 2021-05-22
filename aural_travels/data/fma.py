@@ -144,3 +144,6 @@ class GenrePredictionDataset(Dataset):
         image = image.convert('RGB')
 
         return self.input_transform(image), genre_idx
+
+    def num_classes(self):
+        return len(self.genre_to_idx)
