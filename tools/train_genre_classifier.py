@@ -172,7 +172,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_runs',
                         help='Number of runs to perform per model',
                         type=int,
-                        default=3)
+                        default=1)
     parser.add_argument('--batch_size',
                         help='Batch size for training and validation',
                         type=int,
