@@ -18,9 +18,11 @@ class GenrePredictionDataset(Dataset):
         self.input_transform = input_transform
 
         with open(os.path.join(data_dir, 'scdata.json')) as f:
-            self.tracks = list(json.load(f).values())
+            all_tracks = list(json.load(f).values())
+            self.tracks = [track for track in all_tracks if track['scdata_split'] == split]
+
             self.idx_to_genre = dict(enumerate(set(
-                scdata.map_genre(track['genre']) for track in self.tracks)))
+                scdata.map_genre(track['genre']) for track in all_tracks)))
             self.genre_to_idx = {genre: idx for idx, genre in self.idx_to_genre.items()}
 
     def __len__(self):
