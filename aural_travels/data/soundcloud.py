@@ -16,6 +16,16 @@ from torch.utils.data import Dataset, DataLoader
 import scdata
 
 
+# Calculated by features notebook over 1000 examples sampled from the training data.
+MFCC_MEAN = [-129.6565,  93.0169,   6.5002,   22.2244,    4.3236,   10.2308,
+             -0.5253,    6.3963,   -2.1541,    4.7143,   -2.3346,    3.7656,
+             -2.2059,    2.7291,   -2.3556,    2.6430,   -2.8859,    2.2499,
+             -2.0655,    2.2221]
+MFCC_STD = [147.8568,  55.7701,  34.7229,  22.2324,  17.8979,  16.1369,  14.1328,
+            13.1724,   12.0060,  11.6405,  10.6034,  10.4883,   9.8023,   9.4330,
+            9.2720,     9.0574,   8.7890,   8.8789,   8.7943,   8.8655]
+
+
 def load_tracks(data_dir):
     with open(os.path.join(data_dir, 'scdata.json')) as f:
         return list(json.load(f).values())
@@ -71,8 +81,8 @@ class CoverGenerationDataset(Dataset):
                  image_labels=None,
                  sample_secs=2.0,
                  normalize_mfcc=False,
-                 mfcc_mean=None,
-                 mfcc_std=None):
+                 mfcc_mean=MFCC_MEAN,
+                 mfcc_std=MFCC_STD):
         self.data_dir = data_dir
         self.split = split
         self.image_labels = image_labels
