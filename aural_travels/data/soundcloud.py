@@ -11,6 +11,17 @@ from torch.utils.data import Dataset, DataLoader
 import scdata
 
 
+def load_image(data_dir, track_id):
+    audio_path = scdata.get_audio_path(os.path.join(data_dir, 'audio'), track_id)
+    tags = ID3(audio_path)
+    image = Image.open(BytesIO(tags.getall('APIC')[0].data))
+
+    # Remove alpha channel if present.
+    image = image.convert('RGB')
+
+    return image
+
+
 class GenrePredictionDataset(Dataset):
     def __init__(self, data_dir, split, input_transform):
         self.data_dir = data_dir
@@ -31,13 +42,8 @@ class GenrePredictionDataset(Dataset):
     def __getitem__(self, idx):
         track = self.tracks[idx]
 
+        image = load_image(self.data_dir, track['id'])
         genre_idx = self.genre_to_idx[scdata.map_genre(track['genre'])]
-        audio_path = scdata.get_audio_path(os.path.join(self.data_dir, 'audio'), track['id'])
-        tags = ID3(audio_path)
-        image = Image.open(BytesIO(tags.getall('APIC')[0].data))
-
-        # Remove alpha channel if present
-        image = image.convert('RGB')
 
         return self.input_transform(image), genre_idx
 
