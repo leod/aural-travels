@@ -46,10 +46,10 @@ def load_data(fma_data_dir,
                                               input_transform=val_transform)
     else:
         train_data = soundcloud.GenrePredictionDataset(soundcloud_data_dir,
-                                                       split='train',
+                                                       split='training',
                                                        input_transform=train_transform)
         val_data = soundcloud.GenrePredictionDataset(soundcloud_data_dir,
-                                                     split='dev',
+                                                     split='validation',
                                                      input_transform=val_transform)
 
     if weighted_data:
