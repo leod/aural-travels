@@ -10,6 +10,7 @@ import librosa
 from librosa.feature import mfcc
 
 import torch
+import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 
 import scdata
@@ -77,10 +78,16 @@ class CoverGenerationDataset(Dataset):
         self.image_labels = image_labels
         self.sample_secs = sample_secs
         self.normalize_mfcc = normalize_mfcc
-        self.mfcc_mean = torch.tensor(mfcc_mean)
-        self.mfcc_std_inv = 1.0 / torch.tensor(mfcc_std)
+        if mfcc_mean:
+            self.mfcc_mean = torch.tensor(mfcc_mean)
+        if mfcc_std:
+            self.mfcc_std_inv = 1.0 / torch.tensor(mfcc_std)
 
         self.tracks = tracks_split(load_tracks(data_dir), split)
+
+        self.sr = 22050
+        self.n_fft = 2048 # ~93ms
+        self.hop_length = 1024 # ~46ms
 
     def __len__(self):
         return len(self.tracks)
@@ -97,17 +104,15 @@ class CoverGenerationDataset(Dataset):
             # Use fixed song-dependent random seed for evaluating on static validation/test sets.
             offset = Random(x=track_id).random() * track_secs
 
-        sr = 22050
-        n_fft = 1024 # ~46ms
-
         audio_path = scdata.get_audio_path(os.path.join(self.data_dir, 'audio'), track_id)
         y, _ = librosa.load(audio_path,
-                            sr=sr,
+                            sr=self.sr,
                             mono=True,
                             offset=offset,
                             duration=self.sample_secs)
-        mel = mfcc(y=y, sr=sr, n_fft=n_fft, hop_length=n_fft, center=False)
+        mel = mfcc(y=y, sr=self.sr, n_fft=self.n_fft, hop_length=self.hop_length, center=False)
         mel = torch.tensor(mel)
+        mel = F.pad(mel, (0, self.num_samples() - mel.size()[1])).T
 
         if self.normalize_mfcc:
             mel = (mel - self.mfcc_mean) * self.mfcc_std_inv
@@ -120,3 +125,7 @@ class CoverGenerationDataset(Dataset):
 
     def num_features(self):
         return 20
+
+    def num_samples(self):
+        # FIXME
+        return int(self.sample_secs * self.sr / self.hop_length) - 1
