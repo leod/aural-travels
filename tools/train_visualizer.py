@@ -8,6 +8,7 @@ import argparse
 import json
 import git
 import random
+import warnings
 
 from tqdm import tqdm
 
@@ -16,17 +17,24 @@ import numpy as np
 import torch
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
+
 import torchvision
 from torchvision import transforms
 import torchvision.transforms.functional as TF
 
+from accelerate import Accelerator
+
 from dalle_pytorch import OpenAIDiscreteVAE
 
-from aural_travels.model import image
+from aural_travels.model import image, AudioDALLE
 from aural_travels.data import soundcloud
 
 logging.basicConfig()
 logging.getLogger().setLevel(logging.INFO)
+
+# FIXME: Disable librosa warnings for missing PySoundFile.
+warnings.filterwarnings('ignore')
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -89,6 +97,34 @@ def load_or_encode_images(soundcloud_data_dir, encoding_dir, num_workers, vae, s
     return encoding
     
 
+def train(params, model, optimizer, dataloaders):
+    accelerator = Accelerator()
+
+    writer = SummaryWriter(params['output_dir'])
+
+    model, optimizer, dataloader_training, dataloader_validation = \
+        accelerator.prepare(model, optimizer, dataloaders['training'], dataloaders['validation'])
+
+    global_step = 0
+
+    for epoch in range(params['num_epochs']):
+        model.train()
+
+        logger.info(f'Starting epoch {epoch}')
+
+        for batch in dataloader_training:
+            loss = model(*batch)
+            accelerator.backward(loss)
+            optimizer.step()
+            optimizer.zero_grad()
+
+            logger.info(f'loss: {loss}')
+            writer.add_scalar('loss/train', loss, epoch)
+
+    writer.flush()
+    writer.close()
+
+
 def run(params):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -130,6 +166,36 @@ def run(params):
         for split in ['validation', 'test', 'training']
     }
 
+    model = AudioDALLE(vae=vae,
+                       audio_seq_len=datasets['training'].num_samples(),
+                       audio_num_features=datasets['training'].num_features(),
+                       hidden_size=params['hidden_size'],
+                       num_layers=params['num_layers'],
+                       num_heads=params['num_heads'],
+                       attention_dropout=params['attention_dropout'],
+                       ffnn_dropout=params['ffnn_dropout'])
+
+    dataloaders = {
+        'training': DataLoader(datasets['training'],
+                               batch_size=params['batch_size'],
+                               shuffle=True,
+                               num_workers=params['num_workers']),
+        'validation': DataLoader(datasets['validation'],
+                                 batch_size=params['batch_size'],
+                                 num_workers=params['num_workers']),
+        'test': DataLoader(datasets['test'],
+                           batch_size=params['batch_size'],
+                           num_workers=params['num_workers']),
+    }
+
+    params_to_update = [param for param in model.parameters() if param.requires_grad]
+    num_trainable = sum(p.numel() for p in params_to_update)
+    logger.info(f'Number of trainable parameters: {num_trainable}')
+    optimizer = AdamW(params_to_update, lr=params['lr'])
+
+    train(params, model, optimizer, dataloaders)
+
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
@@ -152,6 +218,26 @@ if __name__ == '__main__':
                         help='Number of training epochs',
                         type=int,
                         default=10)
+    parser.add_argument('--hidden_size',
+                        help='Transformer hidden size',
+                        type=int,
+                        default=256)
+    parser.add_argument('--num_layers',
+                        help='Transformer number of layers',
+                        type=int,
+                        default=16)
+    parser.add_argument('--num_heads',
+                        help='Transformer number of attention heads',
+                        type=int,
+                        default=256)
+    parser.add_argument('--attention_dropout',
+                        help='Dropout for attention layers',
+                        type=float,
+                        default=0.1)
+    parser.add_argument('--ffnn_dropout',
+                        help='Dropout for FFNN layers',
+                        type=float,
+                        default=0.01)
     parser.add_argument('--lr',
                         help='Learning rate for the optimizer',
                         type=float,

@@ -128,7 +128,7 @@ class CoverGenerationDataset(Dataset):
             mel = (mel - self.mfcc_mean) * self.mfcc_std_inv
 
         result = (mel,)
-        if self.image_labels:
+        if self.image_labels is not None:
             result += (self.image_labels[idx],)
 
         return result

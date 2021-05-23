@@ -124,7 +124,7 @@ def run(params, device):
 
 
 def run_all(params):
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
     repo = git.Repo(os.path.dirname(sys.argv[0]), search_parent_directories=True)
 
