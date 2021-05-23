@@ -18,7 +18,7 @@ which are [not included](https://github.com/mdeff/fma/issues/51) in the FMA data
 Let `$DATA_DIR` be your FMA data directory, then run the following command to add album-level
 information:
 ```
-PYTHONPATH=. tools/prepare_album_data.py \
+PYTHONPATH=. tools/fma_prepare_album_data.py \
     --data_dir $DATA_DIR \
     --output_file $DATA_DIR/fma_metadata_albums.csv \
     --album_cover_dir $DATA_DIR/fma_album_covers
