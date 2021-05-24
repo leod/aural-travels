@@ -44,7 +44,7 @@ class AudioDALLE(nn.Module):
                            for i in range(num_layers - 1)]
         attention_types += ['conv_like']
 
-        self.image_emb = nn.Embedding(vae.num_tokens, hidden_size)
+        self.image_emb = nn.Embedding(vae.num_tokens + 1, hidden_size) # +1 for <bos>
         self.audio_pos_emb = nn.Embedding(audio_seq_len + 1, hidden_size) # +1 for <bos>
         self.image_pos_emb = AxialPositionalEmbedding(hidden_size,
                                                       axial_shape=(grid_size, grid_size))
@@ -72,16 +72,29 @@ class AudioDALLE(nn.Module):
         audio_emb = self.input(audio)
         audio_emb += self.audio_pos_emb(torch.arange(audio_emb.shape[1], device=audio_emb.device))
 
-        image_emb = self.image_emb(image)
-        image_emb += self.image_pos_emb(image_emb)
+        # We place a <bos> token between audio and image to kick off image token prediction.
+        image_with_bos = F.pad(image, (1, 0), value=self.vae.num_tokens)
+        image_emb = self.image_emb(image_with_bos)
+        image_emb[:, 1:, :] += self.image_pos_emb(image_emb[:, 1:, :])
+        image_emb[:, 0, :] += self.audio_pos_emb(torch.tensor(self.audio_seq_len,
+                                                              device=audio_emb.device,
+                                                              dtype=torch.long))
 
-        tokens = torch.cat((audio_emb, image_emb), dim=1)
+        input = torch.cat((audio_emb, image_emb[:, :-1]), dim=1)
 
-        output = self.transformer(tokens)
+        #print('image', image.size())
+        #print('image_with_bos', image_with_bos.size())
+        #print('input', input.size())
+
+        output = self.transformer(input)
         output = output[:, audio_emb.shape[1]:, :]
+
+        #print('output', output.size())
 
         logits = self.output(output)
         logits = torch.transpose(logits, 1, 2)
+
+        #print('logits', logits.size())
 
         loss = F.cross_entropy(logits, image)
 
