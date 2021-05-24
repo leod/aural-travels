@@ -1,6 +1,7 @@
 import os
 import json
 import math
+import logging
 import numpy as np
 from io import BytesIO
 from random import Random
@@ -15,6 +16,10 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 
 import scdata
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 # Calculated by features notebook over 1000 examples sampled from the training data.
@@ -116,20 +121,23 @@ class CoverGenerationDataset(Dataset):
             offset = Random(x=track_id).random() * track_secs
 
         audio_path = scdata.get_audio_path(os.path.join(self.data_dir, 'audio'), track_id)
-        y, _ = librosa.load(audio_path,
-                            sr=self.sr,
-                            mono=True,
-                            offset=offset,
-                            duration=self.sample_secs)
         y_padded = np.zeros(int(self.sample_secs * self.sr))
-        y_padded[:y.shape[0]] = y
+        try:
+            y, _ = librosa.load(audio_path,
+                                sr=self.sr,
+                                mono=True,
+                                offset=offset,
+                                duration=self.sample_secs)
+            y_padded[:y.shape[0]] = y
+        except ValueError:
+            logger.warn(f'Empty song (id={track_id}, idx={idx}, duration={track_secs})')
+
         mel = mfcc(y=y_padded,
                    sr=self.sr,
                    n_fft=self.n_fft,
                    hop_length=self.hop_length,
                    center=False)
-        mel = torch.tensor(mel)
-        #mel = F.pad(mel, (0, self.num_samples() - mel.size()[1])).T
+        mel = torch.tensor(mel, dtype=torch.float).T
 
         if self.normalize_mfcc:
             mel = (mel - self.mfcc_mean) * self.mfcc_std_inv
