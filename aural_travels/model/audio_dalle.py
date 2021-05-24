@@ -141,4 +141,4 @@ class AudioDALLE(nn.Module):
             sample = torch.multinomial(probs, 1)
             image = torch.cat((image, sample), dim=-1)
 
-        return self.vae.decode(image)
+        return image #self.vae.decode(image)
