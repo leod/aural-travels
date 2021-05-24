@@ -119,20 +119,28 @@ def train(params, model, optimizer, dataloaders):
         model.train()
 
         logger.info(f'Starting epoch {epoch}')
+        step_loss = 0.0
 
-        for batch in dataloader_training:
+        for i, batch in enumerate(dataloader_training):
             loss = model(*batch)
+            loss = loss / params['gradient_accumulation']
             accelerator.backward(loss)
-            optimizer.step()
-            optimizer.zero_grad()
+            step_loss += loss.item()
 
-            logger.info(f'step {global_step}: loss: {loss}')
-            writer.add_scalar('loss/train', loss, global_step)
+            logger.info('.')
 
-            global_step += 1
+            if (i + 1) % params['gradient_accumulation'] == 0:
+                optimizer.step()
+                optimizer.zero_grad()
 
-            if global_step % params['save_steps'] == 0:
-                save_checkpoint(model, optimizer, epoch, global_step, checkpoint_path)
+                logger.info(f'step {global_step}: loss: {step_loss}')
+                writer.add_scalar('loss/train', step_loss, global_step)
+
+                step_loss = 0
+                global_step += 1
+
+                if global_step % params['save_steps'] == 0:
+                    save_checkpoint(model, optimizer, epoch, global_step, checkpoint_path)
 
     writer.flush()
     writer.close()
@@ -232,6 +240,10 @@ if __name__ == '__main__':
                         help='Batch size for training and validation',
                         type=int,
                         default=128)
+    parser.add_argument('--gradient_accumulation',
+                        help='Number of gradient accumulation steps',
+                        type=int,
+                        default=1)
     parser.add_argument('--num_epochs',
                         help='Number of training epochs',
                         type=int,
