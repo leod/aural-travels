@@ -104,6 +104,15 @@ def load_checkpoint(model, optimizer, path=None):
     return model, optimizer, epoch, global_step
 
 
+def evaluate(model, dataloader):
+    model.eval()
+    loss = 0
+    with torch.no_grad():
+        for batch in tqdm(dataloader):
+            loss += model(*batch).item()
+    return loss / len(dataloader)
+
+
 def train(params, model, optimizer, dataloaders):
     accelerator = Accelerator()
 
@@ -121,13 +130,13 @@ def train(params, model, optimizer, dataloaders):
         logger.info(f'Starting epoch {epoch}')
         step_loss = 0.0
 
-        for i, batch in enumerate(dataloader_training):
+        for i, batch in tqdm(enumerate(dataloader_training)):
             loss = model(*batch)
             loss = loss / params['gradient_accumulation']
             accelerator.backward(loss)
             step_loss += loss.item()
 
-            logger.info('.')
+            #logger.info('.')
 
             if (i + 1) % params['gradient_accumulation'] == 0:
                 optimizer.step()
@@ -141,6 +150,11 @@ def train(params, model, optimizer, dataloaders):
 
                 if global_step % params['save_steps'] == 0:
                     save_checkpoint(model, optimizer, epoch, global_step, checkpoint_path)
+
+                if global_step % params['eval_steps'] == 0:
+                    eval_loss = evaluate(model, dataloader_validation)
+                    logger.info(f'step {global_step}: validation loss: {eval_loss}')
+                    writer.add_scalar('loss/valid', eval_loss, global_step)
 
     writer.flush()
     writer.close()
@@ -235,7 +249,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_workers',
                         help='Number of worker processes to use for loading data',
                         type=int,
-                        default=32)
+                        default=64)
     parser.add_argument('--batch_size',
                         help='Batch size for training and validation',
                         type=int,
@@ -247,7 +261,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_epochs',
                         help='Number of training epochs',
                         type=int,
-                        default=10)
+                        default=30)
     parser.add_argument('--hidden_size',
                         help='Transformer hidden size',
                         type=int,
@@ -290,6 +304,10 @@ if __name__ == '__main__':
     parser.add_argument('--save_steps',
                         help='Save last checkpoint after this many training steps',
                         default=100,
+                        type=int)
+    parser.add_argument('--eval_steps',
+                        help='Evaluate on validation est after this many training steps',
+                        default=30,
                         type=int)
     parser.add_argument('--encoding_dir',
                         help='Directory to cache encodings in',
