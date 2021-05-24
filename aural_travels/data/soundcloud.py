@@ -86,6 +86,9 @@ class CoverGenerationDataset(Dataset):
                  split,
                  image_labels=None,
                  sample_secs=2.0,
+                 sample_rate=22050,
+                 n_fft=2048, # ~93ms at 22050Hz
+                 hop_length=1024, # ~46ms at 22050Hz
                  normalize_mfcc=False,
                  mfcc_mean=MFCC_MEAN,
                  mfcc_std=MFCC_STD):
@@ -93,6 +96,9 @@ class CoverGenerationDataset(Dataset):
         self.split = split
         self.image_labels = image_labels
         self.sample_secs = sample_secs
+        self.sample_rate = sample_rate
+        self.n_fft = n_fft
+        self.hop_length = hop_length
         self.normalize_mfcc = normalize_mfcc
         if mfcc_mean:
             self.mfcc_mean = torch.tensor(mfcc_mean)
@@ -100,10 +106,6 @@ class CoverGenerationDataset(Dataset):
             self.mfcc_std_inv = 1.0 / torch.tensor(mfcc_std)
 
         self.tracks = tracks_split(load_tracks(data_dir), split)
-
-        self.sr = 22050
-        self.n_fft = 2048 # ~93ms
-        self.hop_length = 1024 # ~46ms
 
     def __len__(self):
         return len(self.tracks)
@@ -121,10 +123,10 @@ class CoverGenerationDataset(Dataset):
             offset = Random(x=track_id).random() * track_secs
 
         audio_path = scdata.get_audio_path(os.path.join(self.data_dir, 'audio'), track_id)
-        y_padded = np.zeros(int(self.sample_secs * self.sr))
+        y_padded = np.zeros(int(self.sample_secs * self.sample_rate))
         try:
             y, _ = librosa.load(audio_path,
-                                sr=self.sr,
+                                sr=self.sample_rate,
                                 mono=True,
                                 offset=offset,
                                 duration=self.sample_secs)
@@ -133,7 +135,7 @@ class CoverGenerationDataset(Dataset):
             logger.warn(f'Empty song (id={track_id}, idx={idx}, duration={track_secs})')
 
         mel = mfcc(y=y_padded,
-                   sr=self.sr,
+                   sr=self.sample_rate,
                    n_fft=self.n_fft,
                    hop_length=self.hop_length,
                    center=False)
@@ -153,4 +155,4 @@ class CoverGenerationDataset(Dataset):
 
     def num_samples(self):
         # FIXME
-        return int(self.sample_secs * self.sr / self.hop_length) - 1
+        return int(self.sample_secs * self.sample_rate / self.hop_length) - 1
