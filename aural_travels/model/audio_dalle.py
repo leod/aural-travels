@@ -56,7 +56,7 @@ class AudioDALLE(nn.Module):
         for param in vae.parameters():
             param.requires_grad = False
 
-        self.grid_size = (vae.image_size // (2 ** vae.num_layers))
+        self.grid_size = vae.image_size // (2 ** vae.num_layers)
         self.image_seq_len = self.grid_size ** 2
         self.total_seq_len = audio_seq_len + self.image_seq_len
 
