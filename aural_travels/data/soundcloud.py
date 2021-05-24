@@ -1,6 +1,7 @@
 import os
 import json
 import math
+import numpy as np
 from io import BytesIO
 from random import Random
 
@@ -120,9 +121,15 @@ class CoverGenerationDataset(Dataset):
                             mono=True,
                             offset=offset,
                             duration=self.sample_secs)
-        mel = mfcc(y=y, sr=self.sr, n_fft=self.n_fft, hop_length=self.hop_length, center=False)
+        y_padded = np.zeros(int(self.sample_secs * self.sr))
+        y_padded[:y.shape[0]] = y
+        mel = mfcc(y=y_padded,
+                   sr=self.sr,
+                   n_fft=self.n_fft,
+                   hop_length=self.hop_length,
+                   center=False)
         mel = torch.tensor(mel)
-        mel = F.pad(mel, (0, self.num_samples() - mel.size()[1])).T
+        #mel = F.pad(mel, (0, self.num_samples() - mel.size()[1])).T
 
         if self.normalize_mfcc:
             mel = (mel - self.mfcc_mean) * self.mfcc_std_inv
