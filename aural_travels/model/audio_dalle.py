@@ -2,9 +2,30 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+from torchvision import transforms
+import torchvision.transforms.functional as TF
+
 from axial_positional_embedding import AxialPositionalEmbedding
 from torch.nn.modules import sparse
 from dalle_pytorch.transformer import Transformer
+
+
+def transform_image(image_size, image):
+    # As here:
+    # https://github.com/openai/DALL-E/blob/master/notebooks/usage.ipynb
+    s = min(image.size)
+    
+    if s < image_size:
+        raise ValueError(f'min dim for image {s} < {image_size}')
+        
+    r = image_size / s
+    s = (round(r * image.size[1]), round(r * image.size[0]))
+    image = TF.resize(image, s, interpolation=TF.InterpolationMode.LANCZOS)
+    image = TF.center_crop(image, output_size=2 * [image_size])
+    image = transforms.ToTensor()(image)
+
+    # NOTE: Leaving out map_pixels here, since it is handled by dalle_pytorch.
+    return image
 
 
 class AudioDALLE(nn.Module):

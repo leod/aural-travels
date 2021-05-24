@@ -21,14 +21,10 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 import torchvision
-from torchvision import transforms
-import torchvision.transforms.functional as TF
-
 from accelerate import Accelerator
-
 from dalle_pytorch import OpenAIDiscreteVAE
 
-from aural_travels.model import image, AudioDALLE
+from aural_travels.model import audio_dalle, AudioDALLE
 from aural_travels.data import soundcloud
 
 logging.basicConfig()
@@ -42,28 +38,12 @@ logger.setLevel(logging.INFO)
 
 
 def encode_images(soundcloud_data_dir, num_workers, vae, split):
-    def transform(image):
-        # As here:
-        # https://github.com/openai/DALL-E/blob/master/notebooks/usage.ipynb
-        s = min(image.size)
-        
-        if s < vae.image_size:
-            raise ValueError(f'min dim for image {s} < {vae.image_size}')
-            
-        r = vae.image_size / s
-        s = (round(r * image.size[1]), round(r * image.size[0]))
-        image = TF.resize(image, s, interpolation=TF.InterpolationMode.LANCZOS)
-        image = TF.center_crop(image, output_size=2 * [vae.image_size])
-        image = transforms.ToTensor()(image)
-
-        # NOTE: Leaving out map_pixels here, since it is handled by dalle_pytorch.
-        return image
-
     # We reuse the GenrePredictionDataset because it nicely loads the image data, but we don't care
     # about the genre here. 
+    input_transform = lambda image: audio_dalle.transform_image(vae.image_size, image)
     dataset = soundcloud.GenrePredictionDataset(soundcloud_data_dir,
                                                 split=split,
-                                                input_transform=transform)
+                                                input_transform=input_transform)
     loader = DataLoader(dataset,
                         batch_size=64,
                         shuffle=False,
@@ -287,7 +267,7 @@ if __name__ == '__main__':
                         type=float)
     parser.add_argument('--save_steps',
                         help='Save last checkpoint after this many training steps',
-                        default=10,
+                        default=100,
                         type=int)
     parser.add_argument('--encoding_dir',
                         help='Directory to cache encodings in',
