@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """ Train cover generation models. """
 
+from re import L
 import sys
 import os
 import logging
@@ -95,7 +96,33 @@ def load_or_encode_images(soundcloud_data_dir, encoding_dir, num_workers, vae, s
 
     logger.info(f'Encoding shape: {encoding.size()}')
     return encoding
+
+
+def save_checkpoint(model, optimizer, epoch, global_step, path):
+    logger.info(f'Saving checkpoint (epoch={epoch}, global_step={global_step}) to "{path}"')
+    torch.save({'model': model.state_dict(),
+                'optimizer': optimizer.state_dict(),
+                'epoch': epoch,
+                'global_step': global_step,
+               },
+               path)
+
+
+def load_checkpoint(model, optimizer, path=None):
+    if path is None or not os.path.exists(path):
+        logger.info('Starting training from the start')
+        return model, optimizer, 0, 0
+
+    logger.info(f'Restoring training state from "{path}"')
     
+    checkpoint = torch.load(path)
+    model.load_state_dict(checkpoint['model'])
+    optimizer.load_state_dict(checkpoint['optimizer'])
+    epoch = checkpoint['epoch']
+    global_step = checkpoint['global_step']
+
+    return model, optimizer, epoch, global_step
+
 
 def train(params, model, optimizer, dataloaders):
     accelerator = Accelerator()
@@ -105,9 +132,10 @@ def train(params, model, optimizer, dataloaders):
     model, optimizer, dataloader_training, dataloader_validation = \
         accelerator.prepare(model, optimizer, dataloaders['training'], dataloaders['validation'])
 
-    global_step = 0
+    checkpoint_path = os.path.join(params['output_dir'], 'last_checkpoint.pt')
+    model, optimizer, epoch, global_step = load_checkpoint(model, optimizer, checkpoint_path)
 
-    for epoch in range(params['num_epochs']):
+    for epoch in range(epoch, params['num_epochs']):
         model.train()
 
         logger.info(f'Starting epoch {epoch}')
@@ -118,10 +146,13 @@ def train(params, model, optimizer, dataloaders):
             optimizer.step()
             optimizer.zero_grad()
 
-            logger.info(f'loss: {loss}')
+            logger.info(f'step {global_step}: loss: {loss}')
             writer.add_scalar('loss/train', loss, global_step)
 
             global_step += 1
+
+            if global_step % params['save_steps'] == 0:
+                save_checkpoint(model, optimizer, epoch, global_step, checkpoint_path)
 
     writer.flush()
     writer.close()
@@ -192,7 +223,10 @@ def run(params):
 
     params_to_update = [param for param in model.parameters() if param.requires_grad]
     num_trainable = sum(p.numel() for p in params_to_update)
+
+    logger.info(f'Model: {model}')
     logger.info(f'Number of trainable parameters: {num_trainable}')
+
     optimizer = AdamW(params_to_update, lr=params['lr'])
 
     train(params, model, optimizer, dataloaders)
@@ -251,6 +285,10 @@ if __name__ == '__main__':
                         help='Duration of the model audio input',
                         default=2.0,
                         type=float)
+    parser.add_argument('--save_steps',
+                        help='Save last checkpoint after this many training steps',
+                        default=10,
+                        type=int)
     parser.add_argument('--encoding_dir',
                         help='Directory to cache encodings in',
                         required=True)
