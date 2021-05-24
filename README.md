@@ -18,7 +18,7 @@ conda activate aural-travels
 ## Data
 We consider two datasets for these experiments:
 
-1. The [`scdata`](https://github.com/leod/scdata) dataset, which contains 35,035 tracks from
+1. The [`scdata`](https://github.com/leod/scdata) dataset, which contains 47,858 tracks from
    [SoundCloud](https://soundcloud.com/).
 
 2. The FMA dataset, which was created by Michaël Defferrard, Kirell Benzi, Pierre Vandergheynst
