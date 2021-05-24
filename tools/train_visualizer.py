@@ -175,7 +175,9 @@ def run(params):
         split: soundcloud.CoverGenerationDataset(data_dir=params['soundcloud_data_dir'],
                                                  split=split,
                                                  image_labels=encodings[split],
-                                                 sample_secs=params['sample_secs'])
+                                                 sample_secs=params['sample_secs'],
+                                                 n_fft=params['n_fft'],
+                                                 hop_length=params['hop_length'])
         for split in ['validation', 'test', 'training']
     }
 
@@ -265,6 +267,14 @@ if __name__ == '__main__':
                         help='Duration of the model audio input',
                         default=2.0,
                         type=float)
+    parser.add_argument('--n_fft',
+                        help='Number of samples to use for FFT',
+                        default=2048,
+                        type=int)
+    parser.add_argument('--hop_length',
+                        help='Hop length to use for FFT',
+                        default=1024,
+                        type=int)
     parser.add_argument('--save_steps',
                         help='Save last checkpoint after this many training steps',
                         default=100,
