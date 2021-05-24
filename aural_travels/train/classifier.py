@@ -5,8 +5,10 @@ import copy
 import torch
 from torch import nn
 
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
 
 def train(model, dataloaders, optimizer, num_epochs, weighted_loss, device):
     model = model.to(device)
