@@ -82,19 +82,11 @@ class AudioDALLE(nn.Module):
 
         input = torch.cat((audio_emb, image_emb[:, :-1]), dim=1)
 
-        #print('image', image.size())
-        #print('image_with_bos', image_with_bos.size())
-        #print('input', input.size())
-
         output = self.transformer(input)
         output = output[:, audio_emb.shape[1]:, :]
 
-        #print('output', output.size())
-
         logits = self.output(output)
         logits = torch.transpose(logits, 1, 2)
-
-        #print('logits', logits.size())
 
         loss = F.cross_entropy(logits, image)
 

@@ -119,7 +119,9 @@ def train(params, model, optimizer, dataloaders):
             optimizer.zero_grad()
 
             logger.info(f'loss: {loss}')
-            writer.add_scalar('loss/train', loss, epoch)
+            writer.add_scalar('loss/train', loss, global_step)
+
+            global_step += 1
 
     writer.flush()
     writer.close()
@@ -225,7 +227,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_layers',
                         help='Transformer number of layers',
                         type=int,
-                        default=16)
+                        default=8)
     parser.add_argument('--num_heads',
                         help='Transformer number of attention heads',
                         type=int,
