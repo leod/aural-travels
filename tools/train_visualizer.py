@@ -157,7 +157,7 @@ def run(params):
     os.makedirs(params['output_dir'], exist_ok=True)
     os.makedirs(params['encoding_dir'], exist_ok=True)
     with open(os.path.join(params['output_dir'], 'params.json'), 'w') as f:
-        json.dump(params, f)
+        json.dump(params, f, indent=4)
 
     vae = OpenAIDiscreteVAE()
     vae.eval()

@@ -56,9 +56,9 @@ class AudioDALLE(nn.Module):
         for param in vae.parameters():
             param.requires_grad = False
 
-        grid_size = (vae.image_size // (2 ** vae.num_layers))
-        image_seq_len = grid_size ** 2
-        self.total_seq_len = audio_seq_len + image_seq_len
+        self.grid_size = (vae.image_size // (2 ** vae.num_layers))
+        self.image_seq_len = self.grid_size ** 2
+        self.total_seq_len = audio_seq_len + self.image_seq_len
 
         # Sparse attention order as in the DALL-E paper.
         attention_types = ['axial_col' if (i - 2) % 4 == 0 else 'axial_row'
@@ -68,7 +68,7 @@ class AudioDALLE(nn.Module):
         self.image_emb = nn.Embedding(vae.num_tokens + 1, hidden_size) # +1 for <bos>
         self.audio_pos_emb = nn.Embedding(audio_seq_len + 1, hidden_size) # +1 for <bos>
         self.image_pos_emb = AxialPositionalEmbedding(hidden_size,
-                                                      axial_shape=(grid_size, grid_size))
+                                                      axial_shape=(self.grid_size, self.grid_size))
 
         self.transformer = Transformer(dim=hidden_size,
                                        causal=True,
@@ -80,26 +80,34 @@ class AudioDALLE(nn.Module):
                                        attn_dropout=attention_dropout,
                                        ff_dropout=ffnn_dropout,
                                        attn_types=attention_types,
-                                       image_fmap_size=grid_size,
+                                       image_fmap_size=self.grid_size,
                                        sparse_attn=True)
         self.input = nn.Linear(audio_num_features, hidden_size)
         self.output = nn.Sequential(nn.LayerNorm(hidden_size),
                                     nn.Linear(hidden_size, vae.num_tokens))
 
-    def forward(self, audio, image):
+    def _audio_input(self, audio):
         assert audio.shape[1] == self.audio_seq_len
         assert audio.shape[2] == self.audio_num_features
 
         audio_emb = self.input(audio)
         audio_emb += self.audio_pos_emb(torch.arange(audio_emb.shape[1], device=audio_emb.device))
 
+        return audio_emb
+
+    def _image_input(self, image):
         # We place a <bos> token between audio and image to kick off image token prediction.
         image_with_bos = F.pad(image, (1, 0), value=self.vae.num_tokens)
         image_emb = self.image_emb(image_with_bos)
         image_emb[:, 1:, :] += self.image_pos_emb(image_emb[:, 1:, :])
         image_emb[:, 0, :] += self.audio_pos_emb(torch.tensor(self.audio_seq_len,
-                                                              device=audio_emb.device,
+                                                              device=image.device,
                                                               dtype=torch.long))
+        return image_emb
+
+    def forward(self, audio, image):
+        audio_emb = self._audio_input(audio)
+        image_emb = self._image_input(image)
 
         input = torch.cat((audio_emb, image_emb[:, :-1]), dim=1)
 
@@ -112,3 +120,25 @@ class AudioDALLE(nn.Module):
         loss = F.cross_entropy(logits, image)
 
         return loss
+
+    @torch.no_grad()
+    def generate_images(self,
+                        audio,
+                        temperature=1.0):
+        audio_emb = self._audio_input(audio) 
+
+        image = torch.zeros((audio.size()[0], 0), dtype=torch.long, device=audio.device)
+
+        for step in range(self.image_seq_len):
+            image_emb = self._image_input(image)
+            input = torch.cat((audio_emb, image_emb), dim=1)
+
+            output = self.transformer(input)
+            output = output[:, -1, :]
+
+            logits = self.output(output)
+            probs = F.softmax(logits / temperature, dim=-1)
+            sample = torch.multinomial(probs, 1)
+            image = torch.cat((image, sample), dim=-1)
+
+        return self.vae.decode(image)
