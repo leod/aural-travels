@@ -124,21 +124,31 @@ class AudioDALLE(nn.Module):
     @torch.no_grad()
     def generate_images(self,
                         audio,
-                        temperature=1.0):
+                        temperature=1.0,
+                        top_k=0,
+                        map_logits=None):
         audio_emb = self._audio_input(audio) 
 
-        image = torch.zeros((audio.size()[0], 0), dtype=torch.long, device=audio.device)
+        image_seq = torch.zeros((audio.size()[0], 0), dtype=torch.long, device=audio.device)
 
         for step in range(self.image_seq_len):
-            image_emb = self._image_input(image)
-            input = torch.cat((audio_emb, image_emb), dim=1)
+            image_emb = self._image_input(image_seq)
+            input = torch.cat((audio_emb, image_emb_seq), dim=1)
 
             output = self.transformer(input)
-            output = output[:, -1, :]
-
             logits = self.output(output)
+
+            if map_logits:
+                logits = map_logits(logits)
+
+            new_logits = torch.clone(logits[:, -1, :])
+
+            if top_k > 0:
+                indices_to_remove = logits < torch.topk(logits, top_k)[0][..., -1, None]
+                logits[indices_to_remove] = -float('Inf')
+
             probs = F.softmax(logits / temperature, dim=-1)
             sample = torch.multinomial(probs, 1)
-            image = torch.cat((image, sample), dim=-1)
+            image_seq = torch.cat((image_seq, sample), dim=-1)
 
-        return image #self.vae.decode(image)
+        return image, logits #self.vae.decode(image)
