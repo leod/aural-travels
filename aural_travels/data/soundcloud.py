@@ -91,7 +91,8 @@ class CoverGenerationDataset(Dataset):
                  hop_length=1024, # ~46ms at 22050Hz
                  normalize_mfcc=False,
                  mfcc_mean=MFCC_MEAN,
-                 mfcc_std=MFCC_STD):
+                 mfcc_std=MFCC_STD,
+                 toy_data=False):
         self.data_dir = data_dir
         self.split = split
         self.image_labels = image_labels
@@ -104,8 +105,12 @@ class CoverGenerationDataset(Dataset):
             self.mfcc_mean = torch.tensor(mfcc_mean)
         if mfcc_std:
             self.mfcc_std_inv = 1.0 / torch.tensor(mfcc_std)
+        self.toy_data = toy_data
 
         self.tracks = tracks_split(load_tracks(data_dir), split)
+
+        if toy_data:
+            self.tracks = self.tracks[:10]
 
     def __len__(self):
         return len(self.tracks)
