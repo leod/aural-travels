@@ -199,7 +199,8 @@ def run(params):
                                                  image_labels=encodings[split],
                                                  sample_secs=params['sample_secs'],
                                                  n_fft=params['n_fft'],
-                                                 hop_length=params['hop_length'])
+                                                 hop_length=params['hop_length'],
+                                                 toy_data=params['toy_data'])
         for split in ['validation', 'test', 'training']
     }
 
@@ -316,6 +317,9 @@ if __name__ == '__main__':
                         help='Random seed',
                         default=42,
                         type=int)
+    parser.add_argument('--toy_data',
+                        help='Train on a small subset of the training data',
+                        action='store_true')
     args = parser.parse_args()
 
     run(vars(args))
