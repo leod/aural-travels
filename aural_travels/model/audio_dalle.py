@@ -86,28 +86,28 @@ class AudioDALLE(nn.Module):
         self.output = nn.Sequential(nn.LayerNorm(hidden_size),
                                     nn.Linear(hidden_size, vae.num_tokens))
 
-    def _audio_input(self, audio):
-        assert audio.shape[1] == self.audio_seq_len
-        assert audio.shape[2] == self.audio_num_features
+    def _audio_input(self, audio_seq):
+        assert audio_seq.shape[1] == self.audio_seq_len
+        assert audio_seq.shape[2] == self.audio_num_features
 
-        audio_emb = self.input(audio)
+        audio_emb = self.input(audio_seq)
         audio_emb += self.audio_pos_emb(torch.arange(audio_emb.shape[1], device=audio_emb.device))
 
         return audio_emb
 
-    def _image_input(self, image):
+    def _image_input(self, image_seq):
         # We place a <bos> token between audio and image to kick off image token prediction.
-        image_with_bos = F.pad(image, (1, 0), value=self.vae.num_tokens)
-        image_emb = self.image_emb(image_with_bos)
+        image_seq_with_bos = F.pad(image_seq, (1, 0), value=self.vae.num_tokens)
+        image_emb = self.image_emb(image_seq_with_bos)
         image_emb[:, 1:, :] += self.image_pos_emb(image_emb[:, 1:, :])
         image_emb[:, 0, :] += self.audio_pos_emb(torch.tensor(self.audio_seq_len,
-                                                              device=image.device,
+                                                              device=image_seq.device,
                                                               dtype=torch.long))
         return image_emb
 
-    def forward(self, audio, image):
-        audio_emb = self._audio_input(audio)
-        image_emb = self._image_input(image)
+    def forward(self, audio_seq, image_seq):
+        audio_emb = self._audio_input(audio_seq)
+        image_emb = self._image_input(image_seq)
 
         input = torch.cat((audio_emb, image_emb[:, :-1]), dim=1)
 
@@ -117,23 +117,23 @@ class AudioDALLE(nn.Module):
         logits = self.output(output)
         logits = torch.transpose(logits, 1, 2)
 
-        loss = F.cross_entropy(logits, image)
+        loss = F.cross_entropy(logits, image_seq)
 
         return loss
 
     @torch.no_grad()
     def generate_images(self,
-                        audio,
+                        audio_seq,
                         temperature=1.0,
                         top_k=0,
                         map_logits=None):
-        audio_emb = self._audio_input(audio) 
+        audio_emb = self._audio_input(audio_seq) 
 
-        image_seq = torch.zeros((audio.size()[0], 0), dtype=torch.long, device=audio.device)
+        image_seq = torch.zeros((audio_seq.size()[0], 0), dtype=torch.long, device=audio_seq.device)
 
         for step in range(self.image_seq_len):
             image_emb = self._image_input(image_seq)
-            input = torch.cat((audio_emb, image_emb_seq), dim=1)
+            input = torch.cat((audio_emb, image_emb), dim=1)
 
             output = self.transformer(input)
             logits = self.output(output)
@@ -144,11 +144,11 @@ class AudioDALLE(nn.Module):
             new_logits = torch.clone(logits[:, -1, :])
 
             if top_k > 0:
-                indices_to_remove = logits < torch.topk(logits, top_k)[0][..., -1, None]
-                logits[indices_to_remove] = -float('Inf')
+                indices_to_remove = new_logits < torch.topk(new_logits, top_k)[0][..., -1, None]
+                new_logits[indices_to_remove] = -float('Inf')
 
-            probs = F.softmax(logits / temperature, dim=-1)
+            probs = F.softmax(new_logits / temperature, dim=-1)
             sample = torch.multinomial(probs, 1)
             image_seq = torch.cat((image_seq, sample), dim=-1)
 
-        return image, logits #self.vae.decode(image)
+        return image_seq, logits #self.vae.decode(image)
