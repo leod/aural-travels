@@ -63,6 +63,8 @@ class FeedForward(nn.Module):
 
 class Residual(nn.Module):
     def __init__(self, layers):
+        super().__init__()
+
         self.layers = layers
     
     def forward(self, x, **kwargs):
@@ -115,7 +117,7 @@ class AxialAttention(nn.Module):
                  num_heads,
                  axis,
                  context_len,
-                 image_size,
+                 grid_size,
                  dropout):
         super().__init__()
 
@@ -125,7 +127,7 @@ class AxialAttention(nn.Module):
         assert axis in ['row', 'column']
         self.axis = axis
         self.context_len = context_len
-        self.image_size = image_size
+        self.grid_size = grid_size
 
         self.qkv = nn.Linear(hidden_size, hidden_size * 3, bias=False)
         self.output = nn.Sequential(nn.Linear(hidden_size, hidden_size),
@@ -144,8 +146,6 @@ class AxialAttention(nn.Module):
         q = q * self.scale
 
         # Split into context and image sequences.
-        image_seq_len = self.image_size ** 2
-
         (q_context, q_image), \
         (k_context, k_image), \
         (v_context, v_image) = [(t[:, :self.context_len], t[:, self.context_len:]) for t in (q, k, v)]
@@ -161,12 +161,12 @@ class AxialAttention(nn.Module):
         split_axis_einops = 'b (y x) c -> b y x c' if self.axis == 'row' else 'b (y x) c -> b x y c'
         merge_axis_einops = 'b a n d -> b (a n) d' if self.axis == 'row' else 'b a n d -> b (n a) d'
 
-        q_image, k_image, v_image = [rearrange(t, split_axis_einops, x=self.image_size)
+        q_image, k_image, v_image = [rearrange(t, split_axis_einops, x=self.grid_size)
                                      for t in (q_image, k_image, v_image)]
 
         # Dot products and softmax.
+        scores_image_to_context = einsum('b a i d, b j d -> b a i j', q_image, k_context)
         scores_image_to_image = einsum('b a i d, b a j d -> b a i j', q_image, k_image)
-        scores_image_to_context = einsum('b a i d, b j d', 'b a i j', q_image, k_context)
         scores = torch.cat((scores_image_to_context, scores_image_to_image), dim=-1)
         attention = torch.softmax(scores, dim=-1)
 
@@ -197,11 +197,11 @@ class TransformerNAT(nn.Module):
                  hidden_size,
                  num_layers,
                  context_len,
-                 image_size,
+                 grid_size,
                  num_heads=8,
                  ffnn_mult=2,
-                 ffnn_dropout=0.,
-                 attention_dropout=0.,
+                 ffnn_dropout=0.1,
+                 attention_dropout=0.1,
                  axial_attention=False):
         super().__init__()
 
@@ -211,7 +211,7 @@ class TransformerNAT(nn.Module):
                                                      num_heads=num_heads,
                                                      axis = axis(depth),
                                                      context_len=context_len,
-                                                     image_size=image_size,
+                                                     grid_size=grid_size,
                                                      dropout=attention_dropout)
         else:
             attention = lambda _depth: Attention(hidden_size=hidden_size,
@@ -220,11 +220,13 @@ class TransformerNAT(nn.Module):
 
         block = lambda depth, layer: LayerScale(hidden_size, depth, PreNorm(hidden_size, layer))
 
-        layers = [[block(attention(depth)),
-                   block(FeedForward(hidden_size, ffnn_mult=ffnn_mult, ffnn_dropout=ffnn_dropout))]
+        layers = [[block(depth, attention(depth)),
+                   block(depth, FeedForward(hidden_size,
+                                            mult=ffnn_mult,
+                                            dropout=ffnn_dropout))]
                   for depth in range(num_layers)]
 
-        self.residual = nn.ModuleList(sum(layers, []))
+        self.residual = Residual(nn.ModuleList(sum(layers, [])))
 
     def forward(self, x, **kwargs):
         return self.residual(x, **kwargs)

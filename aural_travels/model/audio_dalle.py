@@ -6,7 +6,6 @@ from torchvision import transforms
 import torchvision.transforms.functional as TF
 
 from axial_positional_embedding import AxialPositionalEmbedding
-from torch.nn.modules import sparse
 from dalle_pytorch.transformer import Transformer
 
 

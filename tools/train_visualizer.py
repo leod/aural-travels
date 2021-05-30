@@ -24,7 +24,7 @@ import torchvision
 from accelerate import Accelerator
 from dalle_pytorch import OpenAIDiscreteVAE
 
-from aural_travels.model import audio_dalle, AudioDALLE
+from aural_travels.model import audio_dalle, AudioDALLE, AudioDALLENAT
 from aural_travels.data import soundcloud
 
 logging.basicConfig()
@@ -197,21 +197,33 @@ def run(params):
         split: soundcloud.CoverGenerationDataset(data_dir=params['soundcloud_data_dir'],
                                                  split=split,
                                                  image_labels=encodings[split],
+                                                 image_vocab_size=vae.dec.vocab_size,
                                                  sample_secs=params['sample_secs'],
                                                  n_fft=params['n_fft'],
                                                  hop_length=params['hop_length'],
+                                                 corrupt_image_mode=params['corrupt_image_mode'],
                                                  toy_data=params['toy_data'])
         for split in ['validation', 'test', 'training']
     }
 
-    model = AudioDALLE(vae=vae,
-                       audio_seq_len=datasets['training'].num_samples(),
-                       audio_num_features=datasets['training'].num_features(),
-                       hidden_size=params['hidden_size'],
-                       num_layers=params['num_layers'],
-                       num_heads=params['num_heads'],
-                       attention_dropout=params['attention_dropout'],
-                       ffnn_dropout=params['ffnn_dropout'])
+    if params['non_autoregressive']:
+        model = AudioDALLENAT(vae=vae,
+                              audio_seq_len=datasets['training'].num_samples(),
+                              audio_num_features=datasets['training'].num_features(),
+                              hidden_size=params['hidden_size'],
+                              num_layers=params['num_layers'],
+                              num_heads=params['num_heads'],
+                              attention_dropout=params['attention_dropout'],
+                              ffnn_dropout=params['ffnn_dropout'])
+    else:
+        model = AudioDALLE(vae=vae,
+                           audio_seq_len=datasets['training'].num_samples(),
+                           audio_num_features=datasets['training'].num_features(),
+                           hidden_size=params['hidden_size'],
+                           num_layers=params['num_layers'],
+                           num_heads=params['num_heads'],
+                           attention_dropout=params['attention_dropout'],
+                           ffnn_dropout=params['ffnn_dropout'])
 
     dataloaders = {
         'training': DataLoader(datasets['training'],
@@ -282,7 +294,7 @@ if __name__ == '__main__':
     parser.add_argument('--ffnn_dropout',
                         help='Dropout for FFNN layers',
                         type=float,
-                        default=0.01)
+                        default=0.1)
     parser.add_argument('--lr',
                         help='Learning rate for the optimizer',
                         type=float,
@@ -313,6 +325,13 @@ if __name__ == '__main__':
     parser.add_argument('--encoding_dir',
                         help='Directory to cache encodings in',
                         required=True)
+    parser.add_argument('--non_autoregressive',
+                        help='Use non-autoregressive model',
+                        action='store_true')
+    parser.add_argument('--corrupt_image_mode',
+                        help='Image corruption mode for non-autoregressive model',
+                        default=None,
+                        type=str)
     parser.add_argument('--seed',
                         help='Random seed',
                         default=42,
