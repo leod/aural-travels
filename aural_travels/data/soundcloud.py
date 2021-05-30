@@ -4,7 +4,7 @@ import math
 import logging
 import numpy as np
 from io import BytesIO
-from random import Random
+import random
 
 from mutagen.id3 import ID3
 from PIL import Image
@@ -52,6 +52,23 @@ def load_image(data_dir, track_id):
     return image
 
 
+def corrupt_image_seq(mode, vocab_size, image_seq):
+    image_seq = image_seq.clone()
+
+    if mode == 'uniform':
+        seq_len = image_seq.shape[0]
+
+        k = random.randint(0, seq_len-1)
+        idxs = random.sample(list(range(seq_len)), k=k)
+
+        for idx in idxs:
+            image_seq[idx] = random.randint(0, vocab_size-1)
+    else:
+        assert False, f'unknown image corruption mode: {mode}'
+
+    return image_seq
+
+
 class GenrePredictionDataset(Dataset):
     def __init__(self, data_dir, split, input_transform):
         self.data_dir = data_dir
@@ -84,6 +101,7 @@ class CoverGenerationDataset(Dataset):
     def __init__(self,
                  data_dir,
                  split,
+                 image_vocab_size,
                  image_labels=None,
                  sample_secs=2.0,
                  sample_rate=22050,
@@ -92,9 +110,11 @@ class CoverGenerationDataset(Dataset):
                  normalize_mfcc=False,
                  mfcc_mean=MFCC_MEAN,
                  mfcc_std=MFCC_STD,
+                 corrupt_image_mode=None,
                  toy_data=False):
         self.data_dir = data_dir
         self.split = split
+        self.image_vocab_size = image_vocab_size
         self.image_labels = image_labels
         self.sample_secs = sample_secs
         self.sample_rate = sample_rate
@@ -105,6 +125,7 @@ class CoverGenerationDataset(Dataset):
             self.mfcc_mean = torch.tensor(mfcc_mean)
         if mfcc_std:
             self.mfcc_std_inv = 1.0 / torch.tensor(mfcc_std)
+        self.corrupt_image_mode = corrupt_image_mode
         self.toy_data = toy_data
 
         self.tracks = tracks_split(load_tracks(data_dir), split)
@@ -119,13 +140,15 @@ class CoverGenerationDataset(Dataset):
         track_id = self.tracks[idx]['id']
         track_secs = self.tracks[idx]['duration'] / 1000.0
 
-        if self.split == 'training':
+        if self.split != 'training':
+            # Use fixed song-dependent random seed for evaluating on static validation/test sets.
+            random.seed(track_id)
+        else:
             # Use torch random seed, which is initialized differently for each data worker and for
             # each epoch.
-            offset = torch.rand(1).item() * track_secs
-        else:
-            # Use fixed song-dependent random seed for evaluating on static validation/test sets.
-            offset = Random(x=track_id).random() * track_secs
+            ...
+            
+        offset = random.random() * track_secs
 
         audio_path = scdata.get_audio_path(os.path.join(self.data_dir, 'audio'), track_id)
         y_padded = np.zeros(int(self.sample_secs * self.sample_rate))
@@ -149,9 +172,14 @@ class CoverGenerationDataset(Dataset):
         if self.normalize_mfcc:
             mel = (mel - self.mfcc_mean) * self.mfcc_std_inv
 
-        result = (mel,)
+        result = mel,
         if self.image_labels is not None:
-            result += (self.image_labels[idx],)
+            if self.corrupt_image_mode:
+                result += corrupt_image_seq(self.corrupt_image_mode,
+                                            self.image_vocab_size,
+                                            self.image_labels[idx]),
+
+            result += self.image_labels[idx],
 
         return result
 
