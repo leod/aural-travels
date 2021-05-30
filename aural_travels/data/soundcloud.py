@@ -107,7 +107,7 @@ class CoverGenerationDataset(Dataset):
                  sample_rate=22050,
                  n_fft=2048, # ~93ms at 22050Hz
                  hop_length=1024, # ~46ms at 22050Hz
-                 normalize_mfcc=False,
+                 normalize_mfcc=True,
                  mfcc_mean=MFCC_MEAN,
                  mfcc_std=MFCC_STD,
                  corrupt_image_mode=None,
