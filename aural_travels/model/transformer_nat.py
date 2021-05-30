@@ -76,9 +76,10 @@ class Attention(nn.Module):
                  hidden_size,
                  num_heads,
                  dropout):
-        self.hidden_size = hidden_size
+        super().__init__()
+
         self.num_heads = num_heads
-        self.scale = (self.hidden_size / num_heads) ** -0.5
+        self.scale = (hidden_size / num_heads) ** -0.5
 
         self.qkv = nn.Linear(hidden_size, hidden_size * 3, bias=False)
         self.output = nn.Sequential(nn.Linear(hidden_size, hidden_size),
@@ -93,8 +94,7 @@ class Attention(nn.Module):
 
         # Split attention heads across hidden state for query/key/value each.
         # Q: Is there a particular reason to put the head dimension second?
-        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=self.num_heads))
-
+        q, k, v = [rearrange(t, 'b n (h d) -> b h n d', h=self.num_heads) for t in qkv]
         q = q * self.scale
 
         # Compute all pairs of query-key dot products and take softmax across sequence.
@@ -109,6 +109,89 @@ class Attention(nn.Module):
         return output
 
 
+class AxialAttention(nn.Module):
+    def __init__(self,
+                 hidden_size,
+                 num_heads,
+                 axis,
+                 context_len,
+                 image_size,
+                 dropout):
+        super().__init__()
+
+        self.num_heads = num_heads
+        self.scale = (hidden_size / num_heads) ** -0.5
+
+        assert axis in ['row', 'column']
+        self.axis = axis
+        self.context_len = context_len
+        self.image_size = image_size
+
+        self.qkv = nn.Linear(hidden_size, hidden_size * 3, bias=False)
+        self.output = nn.Sequential(nn.Linear(hidden_size, hidden_size),
+                                    nn.Dropout(dropout))
+
+    def forward(self, x):
+        # x: [batch_size, seq_len, hidden_size]
+
+        # Project to query, key, and values.
+        # qkv: triplet of [batch_size, seq_len, hidden_size]
+        qkv = self.qkv(x).chunk(3, dim=-1)
+
+        # Split attention heads across hidden state for query/key/value each. Batch and heads are
+        # combined into a single dimension.
+        q, k, v = [rearrange(t, 'b n (h d) -> (b h) n d', h=self.num_heads) for t in qkv]
+        q = q * self.scale
+
+        # Split into context and image sequences.
+        image_seq_len = self.image_size ** 2
+
+        (q_context, q_image), \
+        (k_context, k_image), \
+        (v_context, v_image) = [(t[:, :self.context_len], t[:, self.context_len:]) for t in (q, k, v)]
+
+        # Context-to-context attention.
+        scores_context = einsum('b i d, b j d -> b i j', q_context, k_context)
+        attention_context = torch.softmax(scores_context, dim=-1)
+        out_context = einsum('b i j, b j d -> b i d', attention_context, v_context)
+
+        # Image-attention...
+
+        # Split image x/y axis into separate dimensions
+        split_axis_einops = 'b (y x) c -> b y x c' if self.axis == 'row' else 'b (y x) c -> b x y c'
+        merge_axis_einops = 'b a n d -> b (a n) d' if self.axis == 'row' else 'b a n d -> b (n a) d'
+
+        q_image, k_image, v_image = [rearrange(t, split_axis_einops, x=self.image_size)
+                                     for t in (q_image, k_image, v_image)]
+
+        # Dot products and softmax.
+        scores_image_to_image = einsum('b a i d, b a j d -> b a i j', q_image, k_image)
+        scores_image_to_context = einsum('b a i d, b j d', 'b a i j', q_image, k_context)
+        scores = torch.cat((scores_image_to_context, scores_image_to_image), dim=-1)
+        attention = torch.softmax(scores, dim=-1)
+
+        # Take weighted sums.
+        attention_image_to_context = attention[..., :self.context_len]
+        attention_image_to_image = attention[..., self.context_len:]
+
+        out_image_to_image = einsum('b a i j, b a j d -> b a i d',
+                                    attention_image_to_image,
+                                    v_image)
+        out_image_to_context = einsum('b a i j, b j d -> b a i d',
+                                      attention_image_to_context,
+                                      v_context)
+        out_image = out_image_to_image + out_image_to_context
+
+        # Merge x/y axis to back single dimension.
+        out_image = rearrange(out_image, merge_axis_einops)
+
+        # Prepare output, concatenating across sequence axis and unfolding the combined batch axis.
+        output = torch.cat((out_context, out_image), dim=1)
+        output = rearrange(output, '(b h) n d -> b n (h d)', h=self.num_heads)
+        output = self.output(output)
+        return output
+
+
 class TransformerNAT(nn.Module):
     def __init__(self,
                  hidden_size,
@@ -119,11 +202,17 @@ class TransformerNAT(nn.Module):
                  ffnn_mult=2,
                  ffnn_dropout=0.,
                  attention_dropout=0.,
-                 sparse_attention=False):
+                 axial_attention=False):
         super().__init__()
 
-        if sparse_attention:
-            pass
+        if axial_attention:
+            axis = lambda depth: 'column' if (depth - 2) % 4 == 0 else 'row'
+            attention = lambda depth: AxialAttention(hidden_size=hidden_size,
+                                                     num_heads=num_heads,
+                                                     axis = axis(depth),
+                                                     context_len=context_len,
+                                                     image_size=image_size,
+                                                     dropout=attention_dropout)
         else:
             attention = lambda _depth: Attention(hidden_size=hidden_size,
                                                  num_heads=num_heads,
