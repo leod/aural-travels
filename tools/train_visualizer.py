@@ -286,7 +286,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_heads',
                         help='Transformer number of attention heads',
                         type=int,
-                        default=256)
+                        default=8)
     parser.add_argument('--attention_dropout',
                         help='Dropout for attention layers',
                         type=float,
