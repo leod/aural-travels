@@ -2,9 +2,10 @@ import os
 import json
 import math
 import logging
-import numpy as np
 from io import BytesIO
 import random
+
+import numpy as np
 
 from mutagen.id3 import ID3
 from PIL import Image
@@ -138,41 +139,35 @@ class CoverGenerationDataset(Dataset):
 
     def __getitem__(self, idx):
         track_id = self.tracks[idx]['id']
-        track_secs = self.tracks[idx]['duration'] / 1000.0
+
+        # Features have been precomputed by `tools/compute_visualizer_features.py`.
+        audio_path = scdata.get_audio_path(os.path.join(self.data_dir, 'audio'), track_id)
+        suffix = f'_sr{self.sample_rate}_n_fft{self.n_fft}_hop_length{self.hop_length}'
+        mel_path = os.path.splitext(audio_path)[0] + f'{suffix}.npz'
+        try:
+            mel = np.load(mel_path)['arr_0']
+        except:
+            logger.warn(f'Missing file: {mel_path}')
+            mel = np.zeros((self.num_samples(), self.num_features()))
 
         if self.split != 'training':
             # Use fixed song-dependent random seed for evaluating on static validation/test sets.
             random.seed(track_id)
         else:
+            # TODO
             # Use torch random seed, which is initialized differently for each data worker and for
             # each epoch.
             ...
             
-        offset = random.random() * track_secs
+        offset = random.randint(0, len(mel))
 
-        audio_path = scdata.get_audio_path(os.path.join(self.data_dir, 'audio'), track_id)
-        y_padded = np.zeros(int(self.sample_secs * self.sample_rate))
-        try:
-            y, _ = librosa.load(audio_path,
-                                sr=self.sample_rate,
-                                mono=True,
-                                offset=offset,
-                                duration=self.sample_secs)
-            y_padded[:y.shape[0]] = y
-        except ValueError:
-            logger.warn(f'Empty song (id={track_id}, idx={idx}, duration={track_secs})')
-
-        mel = mfcc(y=y_padded,
-                   sr=self.sample_rate,
-                   n_fft=self.n_fft,
-                   hop_length=self.hop_length,
-                   center=False)
-        mel = torch.tensor(mel, dtype=torch.float).T
+        mel_slice = torch.tensor(mel[offset:offset+self.num_samples()], dtype=torch.float)
+        mel_slice = F.pad(mel_slice, (0, 0, 0, self.num_samples() - mel_slice.shape[0]))
 
         if self.normalize_mfcc:
-            mel = (mel - self.mfcc_mean) * self.mfcc_std_inv
+            mel_slice = (mel_slice - self.mfcc_mean) * self.mfcc_std_inv
 
-        result = mel,
+        result = mel_slice,
         if self.image_labels is not None:
             if self.corrupt_image_mode:
                 result += corrupt_image_seq(self.corrupt_image_mode,
