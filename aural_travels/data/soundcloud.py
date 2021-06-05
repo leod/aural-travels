@@ -53,31 +53,6 @@ def load_image(data_dir, track_id):
     return image
 
 
-def corrupt_image_seq(mode, vocab_size, image_seq):
-    image_seq = image_seq.clone()
-    seq_len = image_seq.shape[0]
-
-    if mode == 'uniform':
-        k = random.randint(0, seq_len-1)
-        idxs = random.sample(list(range(seq_len)), k=k)
-
-        for idx in idxs:
-            image_seq[idx] = random.randint(0, vocab_size-1)
-    elif mode == 'full':
-        for idx in range(seq_len):
-            image_seq[idx] = random.randint(0, vocab_size-1)
-    elif mode == 'uniform_and_full':
-        p = 0.2
-        if random.random() < p:
-            return corrupt_image_seq('full', vocab_size, image_seq)
-        else:
-            return corrupt_image_seq('uniform', vocab_size, image_seq)
-    else:
-        assert False, f'unknown image corruption mode: {mode}'
-
-    return image_seq
-
-
 class GenrePredictionDataset(Dataset):
     def __init__(self, data_dir, split, input_transform):
         self.data_dir = data_dir
@@ -110,7 +85,6 @@ class CoverGenerationDataset(Dataset):
     def __init__(self,
                  data_dir,
                  split,
-                 image_vocab_size,
                  image_labels=None,
                  sample_secs=2.0,
                  sample_rate=22050,
@@ -119,11 +93,9 @@ class CoverGenerationDataset(Dataset):
                  normalize_mfcc=True,
                  mfcc_mean=MFCC_MEAN,
                  mfcc_std=MFCC_STD,
-                 corrupt_image_mode=None,
                  toy_data=False):
         self.data_dir = data_dir
         self.split = split
-        self.image_vocab_size = image_vocab_size
         self.image_labels = image_labels
         self.sample_secs = sample_secs
         self.sample_rate = sample_rate
@@ -134,7 +106,6 @@ class CoverGenerationDataset(Dataset):
             self.mfcc_mean = torch.tensor(mfcc_mean)
         if mfcc_std:
             self.mfcc_std_inv = 1.0 / torch.tensor(mfcc_std)
-        self.corrupt_image_mode = corrupt_image_mode
         self.toy_data = toy_data
 
         self.tracks = tracks_split(load_tracks(data_dir), split)
@@ -177,11 +148,6 @@ class CoverGenerationDataset(Dataset):
 
         result = mel_slice,
         if self.image_labels is not None:
-            if self.corrupt_image_mode:
-                result += corrupt_image_seq(self.corrupt_image_mode,
-                                            self.image_vocab_size,
-                                            self.image_labels[idx]),
-
             result += self.image_labels[idx],
 
         return result
