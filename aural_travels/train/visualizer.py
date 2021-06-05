@@ -2,11 +2,12 @@ import sys
 import os
 import logging
 import json
-import git
 import random
 import warnings
+from collections import defaultdict, Counter
 
 from tqdm import tqdm
+import git
 
 import torch
 from torch.optim import AdamW
@@ -171,42 +172,53 @@ def prepare_batch(params, model, batch):
             batch.append(corrupt_image_seq_batch(params['corrupt_image_mode'],
                                                  model.vae.dec.vocab_size,
                                                  batch[1]))
+            mode = 'corrupt'
         else:
             # FIXME: This is non-deterministic for validation/test set...
 
             parts = []
 
             if random.random() < params['expose_alpha']:
-                last_image_seqs = corrupt_image_seq_batch(params['corrupt_image_mode'],
+                last_image_seqs = corrupt_image_seq_batch('full',
                                                           model.vae.dec.vocab_size,
                                                           batch[1])
 
                 for l in range(params['expose_steps']):
                     parts.append([batch[0], batch[1], last_image_seqs])
-
                     last_image_seqs = model.generate_image_seq(batch[0],
                                                                corrupt_image_seq=last_image_seqs)
+                mode = 'expose'
             else:
                 for l in range(params['expose_steps']):
                     corrupt_image_seqs = corrupt_image_seq_batch(params['corrupt_image_mode'],
                                                                  model.vae.dec.vocab_size,
                                                                  batch[1])
                     parts.append([batch[0], batch[1], corrupt_image_seqs])
+                mode = 'corrupt'
 
             batch = [torch.cat([part[i] for part in parts], dim=0) for i in range(3)]
 
-
-    return batch
+    return batch, mode
 
 
 def evaluate(params, model, dataloader):
     model.eval()
     loss = 0
+    loss_mode = defaultdict(float)
+    mode_counts = Counter()
     with torch.no_grad():
         for batch in tqdm(dataloader):
-            batch = prepare_batch(params, model, batch)
-            loss += model(*batch).item()
-    return loss / len(dataloader)
+            batch, batch_mode = prepare_batch(params, model, batch)
+            batch_loss = model(*batch).item()
+
+            loss += batch_loss
+            loss_mode[batch_mode] += batch_loss
+            mode_counts[batch_mode] += 1
+
+    loss /= len(dataloader)
+    for mode in loss_mode.keys():
+        loss_mode[mode] /= mode_counts[mode]
+    return loss / len(dataloader), loss_mode
 
 
 def train(params, model, optimizer, dataloaders):
@@ -225,32 +237,50 @@ def train(params, model, optimizer, dataloaders):
 
         logger.info(f'Starting epoch {epoch}')
         step_loss = 0.0
+        step_loss_mode = defaultdict(float)
+        mode_counts = Counter()
 
         for i, batch in tqdm(enumerate(dataloader_training)):
-            batch = prepare_batch(params, model, batch)
+            batch, batch_mode = prepare_batch(params, model, batch)
 
             loss = model(*batch)
             loss = loss / params['gradient_accumulation']
             accelerator.backward(loss)
+
             step_loss += loss.item()
+            step_loss_mode[batch_mode] += (loss.item() * params['gradient_accumulation'])
+            mode_counts[batch_mode] += 1
 
             if (i + 1) % params['gradient_accumulation'] == 0:
                 optimizer.step()
                 optimizer.zero_grad()
 
-                logger.info(f'step {global_step}: loss: {step_loss}')
+                for mode in step_loss_mode.keys():
+                    step_loss_mode[mode] /= mode_counts[mode]
+
+                logger.info(f'step {global_step}, {mode_counts}: loss: {step_loss}, '
+                            f'loss by mode: {dict(step_loss_mode)}')
                 writer.add_scalar('loss/train', step_loss, global_step)
 
-                step_loss = 0
+                for mode, loss in step_loss_mode.items():
+                    writer.add_scalar(f'loss/train/{mode}', loss, global_step)
+
+                step_loss = 0.0
+                step_loss_mode = defaultdict(float)
+                mode_counts = Counter()
                 global_step += 1
 
                 if global_step % params['save_steps'] == 0:
                     save_checkpoint(model, optimizer, epoch, global_step, checkpoint_path)
 
                 if global_step % params['eval_steps'] == 0:
-                    eval_loss = evaluate(params, model, dataloader_validation)
-                    logger.info(f'step {global_step}: validation loss: {eval_loss}')
+                    eval_loss, eval_loss_mode = evaluate(params, model, dataloader_validation)
+                    logger.info(f'step {global_step}: validation loss: {eval_loss}, '
+                                f'validation loss by mode: {dict(eval_loss_mode)}')
+
                     writer.add_scalar('loss/valid', eval_loss, global_step)
+                    for mode, loss in eval_loss_mode.items():
+                        writer.add_scalar(f'loss/valid/{mode}', loss, global_step)
 
     writer.flush()
     writer.close()
