@@ -174,6 +174,14 @@ if __name__ == '__main__':
     parser.add_argument('--toy_data',
                         help='Train on a small subset of the training data',
                         action='store_true')
+    parser.add_argument('--expose_steps',
+                        help='Expose the model to its own predictions in training',
+                        default=None,
+                        type=int)
+    parser.add_argument('--expose_alpha',
+                        help='Probability of exposing model to its own predictions',
+                        default=0.5,
+                        type=float)
     args = parser.parse_args()
 
     run(vars(args))
