@@ -71,7 +71,7 @@ class AudioDALLENAT(nn.Module):
                                                               dtype=torch.long))
         return image_emb
 
-    def forward(self, audio_seq, corrupt_image_seq, target_image_seq):
+    def forward(self, audio_seq, target_image_seq, corrupt_image_seq):
         audio_emb = self._audio_input(audio_seq)
         corrupt_image_emb = self._image_input(corrupt_image_seq)
 
