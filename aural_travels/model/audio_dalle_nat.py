@@ -71,7 +71,7 @@ class AudioDALLENAT(nn.Module):
                                                               dtype=torch.long))
         return image_emb
 
-    def forward(self, audio_seq, target_image_seq, corrupt_image_seq):
+    def forward(self, audio_seq, target_image_seq, corrupt_image_seq, return_logits=False):
         audio_emb = self._audio_input(audio_seq)
         corrupt_image_emb = self._image_input(corrupt_image_seq)
 
@@ -81,11 +81,14 @@ class AudioDALLENAT(nn.Module):
         output = output[:, audio_emb.shape[1]+1:, :]
 
         logits = self.output(output)
-        logits = torch.transpose(logits, 1, 2)
+        logits_for_ce = torch.transpose(logits, 1, 2)
 
-        loss = F.cross_entropy(logits, target_image_seq)
+        loss = F.cross_entropy(logits_for_ce, target_image_seq)
 
-        return loss
+        if return_logits:
+            return loss, logits
+        else:
+            return loss
 
     @torch.no_grad()
     def generate_image_seq(self,
