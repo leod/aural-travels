@@ -167,9 +167,34 @@ def corrupt_image_seq_batch(mode, vocab_size, image_seqs):
 
 def prepare_batch(params, model, batch):
     if params['corrupt_image_mode'] is not None:
-        batch.append(corrupt_image_seq_batch(params['corrupt_image_mode'],
-                                             model.vae.dec.vocab_size,
-                                             batch[1]))
+        if params['expose_steps'] is None:
+            batch.append(corrupt_image_seq_batch(params['corrupt_image_mode'],
+                                                 model.vae.dec.vocab_size,
+                                                 batch[1]))
+        else:
+            # FIXME: This is non-deterministic for validation/test set...
+
+            parts = []
+
+            if random.random() < params['expose_alpha']:
+                last_image_seqs = corrupt_image_seq_batch(params['corrupt_image_mode'],
+                                                          model.vae.dec.vocab_size,
+                                                          batch[1])
+
+                for l in range(params['expose_steps']):
+                    parts.append([batch[0], batch[1], last_image_seqs])
+
+                    last_image_seqs = model.generate_image_seq(batch[0],
+                                                               corrupt_image_seq=last_image_seqs)
+            else:
+                for l in range(params['expose_steps']):
+                    corrupt_image_seqs = corrupt_image_seq_batch(params['corrupt_image_mode'],
+                                                                 model.vae.dec.vocab_size,
+                                                                 batch[1])
+                    parts.append([batch[0], batch[1], corrupt_image_seqs])
+
+            batch = [torch.cat([part[i] for part in parts], dim=0) for i in range(3)]
+
 
     return batch
 
