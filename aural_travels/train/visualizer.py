@@ -218,7 +218,7 @@ def evaluate(params, model, dataloader):
     loss /= len(dataloader)
     for mode in loss_mode.keys():
         loss_mode[mode] /= mode_counts[mode]
-    return loss / len(dataloader), loss_mode
+    return loss, loss_mode
 
 
 def train(params, model, optimizer, dataloaders):
