@@ -55,15 +55,23 @@ def load_image(data_dir, track_id):
 
 def corrupt_image_seq(mode, vocab_size, image_seq):
     image_seq = image_seq.clone()
+    seq_len = image_seq.shape[0]
 
     if mode == 'uniform':
-        seq_len = image_seq.shape[0]
-
         k = random.randint(0, seq_len-1)
         idxs = random.sample(list(range(seq_len)), k=k)
 
         for idx in idxs:
             image_seq[idx] = random.randint(0, vocab_size-1)
+    elif mode == 'full':
+        for idx in range(seq_len):
+            image_seq[idx] = random.randint(0, vocab_size-1)
+    elif mode == 'uniform_and_full':
+        p = 0.2
+        if random.random() < p:
+            return corrupt_image_seq('full', vocab_size, image_seq)
+        else:
+            return corrupt_image_seq('uniform', vocab_size, image_seq)
     else:
         assert False, f'unknown image corruption mode: {mode}'
 
