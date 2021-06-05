@@ -61,7 +61,7 @@ def run(params):
     datasets = {split: visualizer.load_dataset(params, split, encodings[split])
                 for split in ['validation', 'test', 'training']}
 
-    model = visualizer.create_model(vae, datasets['training'], params)
+    model = visualizer.create_model(params, vae, datasets['training'])
 
     dataloaders = {'training': DataLoader(datasets['training'],
                                           batch_size=params['batch_size'],

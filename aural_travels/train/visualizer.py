@@ -34,7 +34,7 @@ def create_vae(params):
     return vae
 
 
-def create_model(vae, dataset, params):
+def create_model(params, vae, dataset):
     if params['non_autoregressive']:
         model = AudioDALLENAT(vae=vae,
                               audio_seq_len=dataset.num_samples(),
