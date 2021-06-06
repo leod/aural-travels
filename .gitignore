@@ -3,3 +3,7 @@ __pycache__
 *.pyc
 .ipynb_checkpoints/
 *.pt
+taming/
+notebooks/models/
+notebooks/taming/
+models/
