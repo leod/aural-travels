@@ -2,29 +2,8 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-from torchvision import transforms
-import torchvision.transforms.functional as TF
-
 from axial_positional_embedding import AxialPositionalEmbedding
 from dalle_pytorch.transformer import Transformer
-
-
-def transform_image(image_size, image):
-    # As here:
-    # https://github.com/openai/DALL-E/blob/master/notebooks/usage.ipynb
-    s = min(image.size)
-    
-    if s < image_size:
-        raise ValueError(f'min dim for image {s} < {image_size}')
-        
-    r = image_size / s
-    s = (round(r * image.size[1]), round(r * image.size[0]))
-    image = TF.resize(image, s, interpolation=TF.InterpolationMode.LANCZOS)
-    image = TF.center_crop(image, output_size=2 * [image_size])
-    image = transforms.ToTensor()(image)
-
-    # NOTE: Leaving out map_pixels here, since it is handled by dalle_pytorch.
-    return image
 
 
 class AudioDALLE(nn.Module):
@@ -33,7 +12,7 @@ class AudioDALLE(nn.Module):
     # but with continuous audio features rather than discrete tokens as input.
 
     def __init__(self,
-                 vae,
+                 image_repr,
                  audio_seq_len,
                  audio_num_features,
                  hidden_size, 
@@ -43,7 +22,7 @@ class AudioDALLE(nn.Module):
                  ffnn_dropout):
         super().__init__()
 
-        self.vae = vae
+        self.image_repr = image_repr
         self.audio_seq_len = audio_seq_len
         self.audio_num_features = audio_num_features
         self.hidden_size = hidden_size
@@ -52,11 +31,10 @@ class AudioDALLE(nn.Module):
         self.attention_dropout = attention_dropout
         self.ffnn_dropout = ffnn_dropout
 
-        for param in vae.parameters():
+        for param in image_repr.parameters():
             param.requires_grad = False
 
-        self.grid_size = vae.image_size // (2 ** vae.num_layers)
-        self.image_seq_len = self.grid_size ** 2
+        self.image_seq_len = image_repr.grid_size() ** 2
         self.total_seq_len = audio_seq_len + self.image_seq_len
 
         # Sparse attention order as in the DALL-E paper.
@@ -64,10 +42,11 @@ class AudioDALLE(nn.Module):
                            for i in range(num_layers - 1)]
         attention_types += ['conv_like']
 
-        self.image_emb = nn.Embedding(vae.num_tokens + 1, hidden_size) # +1 for <bos>
+        self.image_emb = nn.Embedding(image_repr.vocab_size() + 1, hidden_size) # +1 for <bos>
         self.audio_pos_emb = nn.Embedding(audio_seq_len + 1, hidden_size) # +1 for <bos>
         self.image_pos_emb = AxialPositionalEmbedding(hidden_size,
-                                                      axial_shape=(self.grid_size, self.grid_size))
+                                                      axial_shape=(image_repr.grid_size(),
+                                                                   image_repr.grid_size()))
 
         self.transformer = Transformer(dim=hidden_size,
                                        causal=True,
@@ -79,11 +58,11 @@ class AudioDALLE(nn.Module):
                                        attn_dropout=attention_dropout,
                                        ff_dropout=ffnn_dropout,
                                        attn_types=attention_types,
-                                       image_fmap_size=self.grid_size,
+                                       image_fmap_size=image_repr.grid_size(),
                                        sparse_attn=True)
         self.input = nn.Linear(audio_num_features, hidden_size)
         self.output = nn.Sequential(nn.LayerNorm(hidden_size),
-                                    nn.Linear(hidden_size, vae.num_tokens))
+                                    nn.Linear(hidden_size, image_repr.vocab_size()))
 
     def _audio_input(self, audio_seq):
         assert audio_seq.shape[1] == self.audio_seq_len
@@ -96,7 +75,7 @@ class AudioDALLE(nn.Module):
 
     def _image_input(self, image_seq):
         # We place a <bos> token between audio and image to kick off image token prediction.
-        image_seq_with_bos = F.pad(image_seq, (1, 0), value=self.vae.num_tokens)
+        image_seq_with_bos = F.pad(image_seq, (1, 0), value=self.image_repr.vocab_size())
         image_emb = self.image_emb(image_seq_with_bos)
         image_emb[:, 1:, :] += self.image_pos_emb(image_emb[:, 1:, :])
         image_emb[:, 0, :] += self.audio_pos_emb(torch.tensor(self.audio_seq_len,

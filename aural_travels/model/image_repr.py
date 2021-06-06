@@ -4,6 +4,7 @@ import numpy as np
 import PIL
 
 import torch
+from torch import nn
 
 from torchvision import transforms
 import torchvision.transforms as T
@@ -16,7 +17,7 @@ from omegaconf import OmegaConf
 from taming.models.vqgan import VQModel
 
 
-class ImageRepr(ABC):
+class ImageRepr(nn.Module, ABC):
     @abstractmethod
     def vocab_size(self):
         pass
@@ -41,8 +42,14 @@ class ImageRepr(ABC):
     def tensor_to_image(self, image_tensor):
         pass
 
+    def rand_image_seq(self, batch_size, device):
+        return torch.randint(self.vocab_size(), (batch_size, self.grid_size()**2), device=device)
 
-class DALLEImageRepr(ABC):
+    def zeros_image_seq(self, batch_size, device):
+        return torch.zeros((batch_size, self.grid_size()**2), dtype=torch.long, device=device)
+
+
+class DALLEImageRepr(ImageRepr):
     def __init__(self):
         super().__init__()
 
@@ -85,7 +92,7 @@ class DALLEImageRepr(ABC):
         return T.ToPILImage(mode='RGB')(image_tensor)
 
 
-class VQGANImageRepr(ABC):
+class VQGANImageRepr(ImageRepr):
     # Codebook with 1024 entries
     CHECKPOINT_URL = 'https://heibox.uni-heidelberg.de/f/140747ba53464f49b476/?dl=1'
     CHECKPOINT_FILENAME = 'vqgan_imagenet_f16_1024.ckpt'
@@ -106,6 +113,7 @@ class VQGANImageRepr(ABC):
 
         self.model = VQModel(**config.model.params)
         self.model.load_state_dict(state_dict, strict=False)
+        self.model.eval()
 
     def vocab_size(self):
         return 1024

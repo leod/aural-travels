@@ -49,19 +49,19 @@ def run(params):
     with open(os.path.join(params['output_dir'], 'params.json'), 'w') as f:
         json.dump(params, f, indent=4)
 
-    vae = visualizer.create_vae(params)
+    image_repr = visualizer.create_image_repr(params)
 
     encodings = {split: visualizer.load_or_encode_images(params['soundcloud_data_dir'],
                                                          params['encoding_dir'],
                                                          params['num_workers'],
-                                                         vae,
+                                                         image_repr,
                                                          split=split)
                  for split in ['validation', 'test', 'training']}
 
     datasets = {split: visualizer.load_dataset(params, split, encodings[split])
                 for split in ['validation', 'test', 'training']}
 
-    model = visualizer.create_model(params, vae, datasets['training'])
+    model = visualizer.create_model(params, image_repr, datasets['training'])
 
     dataloaders = {'training': DataLoader(datasets['training'],
                                           batch_size=params['batch_size'],
@@ -182,6 +182,12 @@ if __name__ == '__main__':
                         help='Probability of exposing model to its own predictions',
                         default=0.5,
                         type=float)
+    parser.add_argument('--axial_attention',
+                        help='Use axial attention',
+                        action='store_true')
+    parser.add_argument('--image_repr',
+                        help='Model to use for image representation',
+                        choices=['dalle', 'vqgan'])
     args = parser.parse_args()
 
     run(vars(args))

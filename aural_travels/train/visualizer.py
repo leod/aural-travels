@@ -15,9 +15,9 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from accelerate import Accelerator
-from dalle_pytorch import OpenAIDiscreteVAE
 
 from aural_travels.model import audio_dalle, AudioDALLE, AudioDALLENAT
+from aural_travels.model.image_repr import DALLEImageRepr, VQGANImageRepr
 from aural_travels.data import soundcloud
 
 
@@ -28,24 +28,29 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def create_vae(params):
-    vae = OpenAIDiscreteVAE()
-    vae.eval()
-    return vae
+def create_image_repr(params):
+    if params['image_repr'] == 'dalle':
+        return DALLEImageRepr()
+    elif params['image_repr'] == 'vqgan':
+        return VQGANImageRepr()
+    else:
+        assert False
 
 
-def create_model(params, vae, dataset):
+def create_model(params, image_repr, dataset):
     if params['non_autoregressive']:
-        model = AudioDALLENAT(vae=vae,
+        # TODO: Untested after image_repr refactoring
+        model = AudioDALLENAT(image_repr=image_repr,
                               audio_seq_len=dataset.num_samples(),
                               audio_num_features=dataset.num_features(),
                               hidden_size=params['hidden_size'],
                               num_layers=params['num_layers'],
                               num_heads=params['num_heads'],
                               attention_dropout=params['attention_dropout'],
-                              ffnn_dropout=params['ffnn_dropout'])
+                              ffnn_dropout=params['ffnn_dropout'],
+                              axial_attention=params['axial_attention'])
     else:
-        model = AudioDALLE(vae=vae,
+        model = AudioDALLE(image_repr=image_repr,
                            audio_seq_len=dataset.num_samples(),
                            audio_num_features=dataset.num_features(),
                            hidden_size=params['hidden_size'],
@@ -57,10 +62,10 @@ def create_model(params, vae, dataset):
     return model
 
 
-def encode_images(soundcloud_data_dir, num_workers, vae, split):
+def encode_images(soundcloud_data_dir, num_workers, image_repr, split):
     # We reuse the GenrePredictionDataset because it nicely loads the image data, but we don't care
     # about the genre here. 
-    input_transform = lambda image: audio_dalle.transform_image(vae.image_size, image)
+    input_transform = lambda image: image_repr.image_to_tensor(image)[0]
     dataset = soundcloud.GenrePredictionDataset(soundcloud_data_dir,
                                                 split=split,
                                                 input_transform=input_transform)
@@ -70,24 +75,24 @@ def encode_images(soundcloud_data_dir, num_workers, vae, split):
                         num_workers=num_workers)
     encoding = []
 
-    vae = vae.to('cuda')
+    image_repr = image_repr.to('cuda')
 
     with torch.no_grad():
-        for image, _ in tqdm(loader):
-            image = image.to('cuda')
-            encoding.append(vae.get_codebook_indices(image).detach().cpu())
+        for tensor, _ in tqdm(loader):
+            tensor = tensor.to('cuda')
+            encoding.append(image_repr.encode(tensor).detach().cpu())
 
     return torch.cat(encoding)
 
 
-def load_or_encode_images(soundcloud_data_dir, encoding_dir, num_workers, vae, split):
+def load_or_encode_images(soundcloud_data_dir, encoding_dir, num_workers, image_repr, split):
     encoding_path = os.path.join(encoding_dir, split + '.pt')
 
     if not os.path.exists(encoding_path):
         logger.info(f'Encoding dataset "{split}", will save at "{encoding_path}"')
         encoding = encode_images(soundcloud_data_dir=soundcloud_data_dir,
                                  num_workers=num_workers,
-                                 vae=vae,
+                                 image_repr=image_repr,
                                  split=split)
         torch.save(encoding, encoding_path)
     else:
@@ -170,7 +175,7 @@ def prepare_batch(params, model, batch):
     if params['corrupt_image_mode'] is not None:
         if params['expose_steps'] is None:
             batch.append(corrupt_image_seq_batch(params['corrupt_image_mode'],
-                                                 model.vae.dec.vocab_size,
+                                                 model.image_repr.vocab_size(),
                                                  batch[1]))
             mode = 'corrupt'
         else:
@@ -180,7 +185,7 @@ def prepare_batch(params, model, batch):
 
             if random.random() < params['expose_alpha']:
                 last_image_seqs = corrupt_image_seq_batch('full',
-                                                          model.vae.dec.vocab_size,
+                                                          model.image_repr.vocab_size(),
                                                           batch[1])
                 #last_image_seqs = batch[1].clone()
                 last_image_seqs = torch.zeros_like(batch[1])
@@ -194,7 +199,7 @@ def prepare_batch(params, model, batch):
             else:
                 for l in range(params['expose_steps']):
                     corrupt_image_seqs = corrupt_image_seq_batch(params['corrupt_image_mode'],
-                                                                 model.vae.dec.vocab_size,
+                                                                 model.image_repr.vocab_size(),
                                                                  batch[1])
                     parts.append([batch[0], batch[1], corrupt_image_seqs])
                 mode = 'corrupt'
