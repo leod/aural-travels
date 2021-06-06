@@ -182,11 +182,14 @@ def prepare_batch(params, model, batch):
                 last_image_seqs = corrupt_image_seq_batch('full',
                                                           model.vae.dec.vocab_size,
                                                           batch[1])
+                #last_image_seqs = batch[1].clone()
+                last_image_seqs = torch.zeros_like(batch[1])
 
                 for l in range(params['expose_steps']):
                     parts.append([batch[0], batch[1], last_image_seqs])
                     last_image_seqs = model.generate_image_seq(batch[0],
-                                                               corrupt_image_seq=last_image_seqs)
+                                                               corrupt_image_seq=last_image_seqs,
+                                                               top_k=1)
                 mode = 'expose'
             else:
                 for l in range(params['expose_steps']):
@@ -248,7 +251,7 @@ def train(params, model, optimizer, dataloaders):
             accelerator.backward(loss)
 
             step_loss += loss.item()
-            step_loss_mode[batch_mode] += (loss.item() * params['gradient_accumulation'])
+            step_loss_mode[batch_mode] += loss.item() * params['gradient_accumulation']
             mode_counts[batch_mode] += 1
 
             if (i + 1) % params['gradient_accumulation'] == 0:
