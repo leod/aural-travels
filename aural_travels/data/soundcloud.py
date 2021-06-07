@@ -117,21 +117,11 @@ class CoverGenerationDataset(Dataset):
         return len(self.tracks)
 
     def __getitem__(self, idx):
-        track_id = self.tracks[idx]['id']
-
-        # Features have been precomputed by `tools/compute_visualizer_features.py`.
-        audio_path = scdata.get_audio_path(os.path.join(self.data_dir, 'audio'), track_id)
-        suffix = f'_sr{self.sample_rate}_n_fft{self.n_fft}_hop_length{self.hop_length}'
-        mel_path = os.path.splitext(audio_path)[0] + f'{suffix}.npz'
-        try:
-            mel = np.load(mel_path)['arr_0']
-        except:
-            logger.warn(f'Missing file: {mel_path}')
-            mel = np.zeros((self.num_samples(), self.num_features()))
+        mel = self.load_features(idx)
 
         if self.split != 'training':
             # Use fixed song-dependent random seed for evaluating on static validation/test sets.
-            random.seed(track_id)
+            random.seed(idx)
         else:
             # TODO
             # Use torch random seed, which is initialized differently for each data worker and for
@@ -151,6 +141,18 @@ class CoverGenerationDataset(Dataset):
             result += self.image_labels[idx],
 
         return result
+
+    def load_features(self, idx):
+        # Features have been precomputed by `tools/compute_visualizer_features.py`.
+        track_id = self.tracks[idx]['id']
+        audio_path = scdata.get_audio_path(os.path.join(self.data_dir, 'audio'), track_id)
+        suffix = f'_sr{self.sample_rate}_n_fft{self.n_fft}_hop_length{self.hop_length}'
+        mel_path = os.path.splitext(audio_path)[0] + f'{suffix}.npz'
+        try:
+            return np.load(mel_path)['arr_0']
+        except:
+            logger.warn(f'Missing file: {mel_path}')
+            return np.zeros((self.num_samples(), self.num_features()))
 
     def num_features(self):
         return 20
