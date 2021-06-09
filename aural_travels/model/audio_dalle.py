@@ -117,7 +117,7 @@ class AudioDALLE(nn.Module):
             logits = self.output(output)
 
             if map_logits:
-                logits = map_logits(logits)
+                new_logits = map_logits(logits)
 
             new_logits = torch.clone(logits[:, -1, :])
 
