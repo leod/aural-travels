@@ -95,7 +95,9 @@ class AudioDALLENAT(nn.Module):
                            audio_seq,
                            corrupt_image_seq=None,
                            temperature=1.0,
-                           top_k=0):
+                           top_k=0,
+                           return_logits=False,
+                           map_logits=None):
         audio_emb = self._audio_input(audio_seq) 
 
         if corrupt_image_seq is None:
@@ -107,16 +109,23 @@ class AudioDALLENAT(nn.Module):
         input = torch.cat((audio_emb, corrupt_image_emb), dim=1)
         output = self.transformer(input)
         output = output[:,self.audio_seq_len+1:, :]
+
         logits = self.output(output)
+        if map_logits:
+            logits = map_logits(logits)
+        new_logits = torch.clone(logits)
 
         if top_k > 0:
-            indices_to_remove = logits < torch.topk(logits, top_k)[0][..., -1, None]
-            logits[indices_to_remove] = -float('Inf')
+            indices_to_remove = new_logits < torch.topk(new_logits, top_k)[0][..., -1, None]
+            new_logits[indices_to_remove] = -float('Inf')
 
-        probs = F.softmax(logits / temperature, dim=-1)
+        probs = F.softmax(new_logits / temperature, dim=-1)
 
         probs = rearrange(probs, 'b n v -> (b n) v')
         image_seq = torch.multinomial(probs, 1)[..., 0]
         image_seq = rearrange(image_seq, '(b n) -> b n', b=audio_seq.shape[0])
 
-        return image_seq
+        if return_logits:
+            return image_seq, logits
+        else:
+            return image_seq
