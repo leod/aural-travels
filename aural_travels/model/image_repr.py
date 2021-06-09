@@ -5,6 +5,7 @@ import PIL
 
 import torch
 from torch import nn
+import torch.nn.functional as F
 
 from torchvision import transforms
 import torchvision.transforms as T
@@ -42,8 +43,15 @@ class ImageRepr(nn.Module, ABC):
     def tensor_to_image(self, image_tensor):
         pass
 
-    def rand_image_seq(self, batch_size, device):
-        return torch.randint(self.vocab_size(), (batch_size, self.grid_size()**2), device=device)
+    def rand_image_seq(self, batch_size, patch_size=1, device=None):
+        sample_size = self.grid_size() // patch_size
+        sample = torch.randint(self.vocab_size(),
+                               (batch_size, 1, sample_size, sample_size),
+                               device=device)
+        image_seq = F.upsample(sample.float(), scale_factor=(patch_size, patch_size))
+        print(sample.shape)
+        print(image_seq.shape)
+        return image_seq.long().view(batch_size, -1)
 
     def zeros_image_seq(self, batch_size, device):
         return torch.zeros((batch_size, self.grid_size()**2), dtype=torch.long, device=device)
