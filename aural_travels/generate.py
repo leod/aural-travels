@@ -29,12 +29,22 @@ def keyframes(model,
                                              top_k=top_k,
                                              temperature=temperature,
                                              corrupt_image_seq=last_image_seq)
-        yield image_seq
+        yield image_seq.clone()
 
         last_image_seq = image_seq
         noise(time, time + time_step, last_image_seq)
 
         time += time_step
+
+
+def interpolate(image_repr, keyframes, interframes):
+    last_keyframe = next(keyframes)
+
+    for keyframe in keyframes:
+        for i in range(interframes):
+            yield image_repr.decode(last_keyframe, keyframe, alpha=i/interframes)[0]
+
+        last_keyframe = keyframe
 
 
 def cross_noise(image_repr, image_seq):
