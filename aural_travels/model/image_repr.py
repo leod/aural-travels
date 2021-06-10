@@ -49,8 +49,6 @@ class ImageRepr(nn.Module, ABC):
                                (batch_size, 1, sample_size, sample_size),
                                device=device)
         image_seq = F.upsample(sample.float(), scale_factor=(patch_size, patch_size))
-        print(sample.shape)
-        print(image_seq.shape)
         return image_seq.long().view(batch_size, -1)
 
     def zeros_image_seq(self, batch_size, device):

@@ -133,8 +133,7 @@ class CoverGenerationDataset(Dataset):
         mel_slice = torch.tensor(mel[offset:offset+self.num_samples()], dtype=torch.float)
         mel_slice = F.pad(mel_slice, (0, 0, 0, self.num_samples() - mel_slice.shape[0]))
 
-        if self.normalize_mfcc:
-            mel_slice = (mel_slice - self.mfcc_mean) * self.mfcc_std_inv
+        if self.normalize_mfcc: mel_slice = (mel_slice - self.mfcc_mean) * self.mfcc_std_inv
 
         result = mel_slice,
         if self.image_labels is not None:
