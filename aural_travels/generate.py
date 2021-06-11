@@ -5,6 +5,7 @@ import numpy as np
 
 import torch
 
+
 def keyframes(model,
               mel,
               last_image_seq,
@@ -54,8 +55,10 @@ def cross_noise(image_repr, image_seq):
 
     image_seq = image_seq.view(1, image_repr.grid_size(), image_repr.grid_size())
 
-    image_seq[:, y, :] = torch.randint(image_repr.vocab_size(), (image_repr.grid_size(),))
-    image_seq[:, :, x] = torch.randint(image_repr.vocab_size(), (image_repr.grid_size(),))
+    image_seq[:, y-2:y+1, :] \
+        = torch.randint(image_repr.vocab_size(), (1, 3, image_repr.grid_size()))
+    image_seq[:, :, x-2:x+1] \
+        = torch.randint(image_repr.vocab_size(), (1, image_repr.grid_size(), 3))
 
 
 def onset_env_noise(image_repr,
@@ -70,7 +73,8 @@ def onset_env_noise(image_repr,
     idx = math.floor(time * sample_rate / hop_length)
     next_idx = math.ceil(next_time * sample_rate / hop_length)
 
-    strength = np.max(onset_env[idx:next_idx])
+    #strength = np.max(onset_env[idx:next_idx])
+    strength = np.mean(onset_env[idx:next_idx])
     k = min(image_repr.grid_size() ** 2, max(0, int(scale * (strength ** power))))
 
     print('env_noise', time, strength, k)
@@ -105,4 +109,4 @@ def segment_reset_noise(image_repr,
 
     if segment_idx < len(boundaries) and boundaries[segment_idx] < next_time:
         print('reset_noise', time)
-        image_seq[:, :] = image_repr.rand_image_seq(1, patch_size=4)
+        image_seq[:, :] = image_repr.rand_image_seq(1, patch_size=2)
