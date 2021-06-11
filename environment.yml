@@ -20,4 +20,5 @@ dependencies:
         - git+https://github.com/leod/scdata.git#egg=scdata
         - git+https://github.com/lucidrains/DALLE-pytorch.git#egg=dalle-pytorch
         - git+https://github.com/CompVis/taming-transformers#egg=taming-transformers
+        - git+https://github.com/urinieto/msaf#egg=msaf
         - accelerate
