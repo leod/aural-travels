@@ -3,6 +3,7 @@ import random
 
 import numpy as np
 
+import torch
 
 def keyframes(model,
               mel,
@@ -63,16 +64,31 @@ def onset_env_noise(image_repr,
                     next_time,
                     image_seq,
                     power=2.0,
+                    scale=1.0,
                     sample_rate=22050,
                     hop_length=512):
     idx = math.floor(time * sample_rate / hop_length)
     next_idx = math.ceil(next_time * sample_rate / hop_length)
 
     strength = np.max(onset_env[idx:next_idx])
-    k = min(image_repr.grid_size() ** 2, max(0, int(strength ** power)))
+    k = min(image_repr.grid_size() ** 2, max(0, int(scale * (strength ** power))))
 
-    print(idx, next_idx, strength, k)
+    print('env_noise', time, strength, k)
 
     idxs = random.sample(list(range(image_repr.grid_size() ** 2)), k=k)
     for idx in idxs:
         image_seq[0, idx] = random.randint(0, image_repr.vocab_size()-1)
+
+
+def beat_cross_noise(image_repr,
+                     beats,
+                     time,
+                     next_time,
+                     image_seq):
+    beat_idx = 0
+    while beat_idx < len(beats) and beats[beat_idx] < time:
+        beat_idx += 1
+
+    if beat_idx < len(beats) and beats[beat_idx] < next_time:
+        print('cross_noise', time)
+        cross_noise(image_repr, image_seq)
