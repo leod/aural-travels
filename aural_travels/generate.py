@@ -92,3 +92,17 @@ def beat_cross_noise(image_repr,
     if beat_idx < len(beats) and beats[beat_idx] < next_time:
         print('cross_noise', time)
         cross_noise(image_repr, image_seq)
+
+
+def segment_reset_noise(image_repr,
+                        boundaries,
+                        time,
+                        next_time,
+                        image_seq):
+    segment_idx = 0
+    while segment_idx < len(boundaries) and boundaries[segment_idx] < time:
+        segment_idx += 1
+
+    if segment_idx < len(boundaries) and boundaries[segment_idx] < next_time:
+        print('reset_noise', time)
+        image_seq[:, :] = image_repr.rand_image_seq(1, patch_size=4)
