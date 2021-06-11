@@ -11,7 +11,7 @@ def keyframes(model,
               last_image_seq,
               fps,
               top_k=0,
-              temperature=1.0,
+              temperature=lambda time, next_time: 1.0,
               sample_rate=22050,
               hop_length=1024,
               num_mel_samples=42,
@@ -27,16 +27,19 @@ def keyframes(model,
         mel_sample_idx = int(time / mel_frame_duration)
         mel_slice = mel[None, mel_sample_idx:mel_sample_idx+num_mel_samples].to(device)
 
+        tau = temperature(time, time + time_step)
+        print('temp', tau)
+
         image_seq = model.generate_image_seq(mel_slice,
                                              top_k=top_k,
-                                             temperature=temperature,
+                                             temperature=tau,
                                              corrupt_image_seq=last_image_seq)
         yield image_seq.clone()
 
         last_image_seq = image_seq
-        noise(time, time + time_step, last_image_seq)
-
         time += time_step
+
+        noise(time, time + time_step, last_image_seq)
 
 
 def interpolate(image_repr, keyframes, interframes):
@@ -59,6 +62,17 @@ def cross_noise(image_repr, image_seq):
         = torch.randint(image_repr.vocab_size(), (1, 3, image_repr.grid_size()))
     image_seq[:, :, x-2:x+1] \
         = torch.randint(image_repr.vocab_size(), (1, image_repr.grid_size(), 3))
+
+
+def onset_env_temperature(onset_env,
+                          time,
+                          next_time,
+                          sample_rate=22050,
+                          hop_length=512):
+    idx = math.floor(time * sample_rate / hop_length)
+    next_idx = math.ceil(next_time * sample_rate / hop_length)
+
+    return min(1.6, max(1.0, np.mean(onset_env[idx:next_idx])))
 
 
 def onset_env_noise(image_repr,
