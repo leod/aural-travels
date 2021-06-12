@@ -98,6 +98,41 @@ def onset_env_noise(image_repr,
         image_seq[0, idx] = random.randint(0, image_repr.vocab_size()-1)
 
 
+def onset_env_temperature(onset_env,
+                          time,
+                          next_time,
+                          sample_rate=22050,
+                          hop_length=512):
+    idx = math.floor(time * sample_rate / hop_length)
+    next_idx = math.ceil(next_time * sample_rate / hop_length)
+
+    return min(1.6, max(1.0, np.mean(onset_env[idx:next_idx])))
+
+
+def onset_env_bump_noise(image_repr,
+                         onset_env,
+                         time,
+                         next_time,
+                         image_seq,
+                         sample_rate=22050,
+                         hop_length=512):
+    idx = math.floor(time * sample_rate / hop_length)
+    next_idx = math.ceil(next_time * sample_rate / hop_length)
+
+    strength = np.mean(onset_env[idx:next_idx])
+    size = max(0, int(round((strength - 1) * 8)))
+
+    print('bump_noise', time, strength, size)
+    image_seq = image_seq.view(1, image_repr.grid_size(), image_repr.grid_size())
+
+    for dx in range(size):
+        for dy in range(size):
+            x = int(round((image_repr.grid_size() - size) / 2.0)) + dx
+            y = int(round((image_repr.grid_size() - size) / 2.0)) + dy
+
+            image_seq[0, x, y] = random.randint(0, image_repr.vocab_size() - 1)
+
+
 def beat_cross_noise(image_repr,
                      beats,
                      time,
