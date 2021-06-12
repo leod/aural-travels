@@ -133,6 +133,45 @@ def onset_env_bump_noise(image_repr,
             image_seq[0, x, y] = random.randint(0, image_repr.vocab_size() - 1)
 
 
+def onset_env_circle_noise(image_repr,
+                           onset_env,
+                           state,
+                           time,
+                           next_time,
+                           image_seq,
+                           sample_rate=22050,
+                           hop_length=512):
+    idx = math.floor(time * sample_rate / hop_length)
+    next_idx = math.ceil(next_time * sample_rate / hop_length)
+
+    strength = np.mean(onset_env[idx:next_idx])
+
+    if state is None:
+        state = 0.0
+
+    delta = 3.0 * max(0.0, strength - 0.5) / math.pi
+    
+    print('circle_noise', state, strength, delta)
+
+    image_seq = image_seq.view(1, image_repr.grid_size(), image_repr.grid_size())
+
+    color = random.randint(0, image_repr.vocab_size() - 1)
+
+    while delta > 0.0:
+        state += delta
+        delta -= 0.1
+
+        dx = math.floor(7.5 * math.cos(-state))
+        dy = math.floor(7.5 * math.sin(-state))
+
+        x = 8 + dx
+        y = 8 + dy
+
+        image_seq[0, x, y] = color #random.randint(0, image_repr.vocab_size() - 1)
+
+    return state
+    
+
 def beat_cross_noise(image_repr,
                      beats,
                      time,
@@ -159,3 +198,4 @@ def segment_reset_noise(image_repr,
     if segment_idx < len(boundaries) and boundaries[segment_idx] < next_time:
         print('reset_noise', time)
         image_seq[:, :] = image_repr.rand_image_seq(1, patch_size=2)
+
