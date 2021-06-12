@@ -191,6 +191,56 @@ def beat_cross_noise(image_repr,
         cross_noise(image_repr, image_seq)
 
 
+def beat_spiral(image_repr,
+                beats,
+                time,
+                next_time,
+                image_seq):
+    beat_idx = 0
+    while beat_idx < len(beats) and beats[beat_idx] < time:
+        beat_idx += 1
+
+    if beat_idx < len(beats) and beats[beat_idx] < next_time:
+        image_seq = image_seq.view(1, image_repr.grid_size(), image_repr.grid_size())
+
+        print('spiral_noise', time)
+
+        #13 |12 |11 |10
+        #14 | 3 | 2 | 9
+        #15 | 4 | 1 | 8
+        #16 | 5 | 6 | 7
+
+        points = []
+    
+        x, y = 8, 8
+        dx, dy = 0, -1
+        energy = 1
+        capacity = 1
+
+        while True:
+            points.append((x, y))
+
+            x += dx
+            y += dy
+
+            energy -= 1
+            if energy == 0:
+                if dy != 0:
+                    dx, dy = dy, 0
+                else:
+                    dx, dy = 0, -dx
+                    capacity += 1
+                    if capacity == 16:
+                        break
+
+                energy = capacity
+
+        for (x1, y1), (x2, y2) in zip(points[::-1], points[::-1][1:]):
+            image_seq[0, x1, y1] = image_seq[0, x2, y2]
+
+        image_seq[0, 8, 8] = random.randint(0, image_repr.vocab_size() - 1)
+
+
 def segment_reset_noise(image_repr,
                         boundaries,
                         time,
