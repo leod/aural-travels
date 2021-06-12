@@ -58,10 +58,10 @@ def cross_noise(image_repr, image_seq):
 
     image_seq = image_seq.view(1, image_repr.grid_size(), image_repr.grid_size())
 
-    image_seq[:, y-2:y+1, :] \
-        = torch.randint(image_repr.vocab_size(), (1, 3, image_repr.grid_size()))
-    image_seq[:, :, x-2:x+1] \
-        = torch.randint(image_repr.vocab_size(), (1, image_repr.grid_size(), 3))
+    image_seq[:, y-1:y+1, :] \
+        = torch.randint(image_repr.vocab_size(), (1, 2, image_repr.grid_size()))
+    image_seq[:, :,x-1:x+1] \
+        = torch.randint(image_repr.vocab_size(), (1, image_repr.grid_size(), 2))
 
 
 def onset_env_temperature(onset_env,
