@@ -58,10 +58,15 @@ def cross_noise(image_repr, image_seq):
 
     image_seq = image_seq.view(1, image_repr.grid_size(), image_repr.grid_size())
 
-    image_seq[:, y-1:y+1, :] \
-        = torch.randint(image_repr.vocab_size(), (1, 2, image_repr.grid_size()))
-    image_seq[:, :,x-1:x+1] \
-        = torch.randint(image_repr.vocab_size(), (1, image_repr.grid_size(), 2))
+    #image_seq[:, y-1:y+1, :] \
+    #    = torch.randint(image_repr.vocab_size(), (1, 2, image_repr.grid_size()))
+    #image_seq[:, :,x-1:x+1] \
+    #    = torch.randint(image_repr.vocab_size(), (1, image_repr.grid_size(), 2))
+
+    image_seq[:, y, :] \
+        = torch.randint(image_repr.vocab_size(), (image_repr.grid_size(),))
+    image_seq[:, :,x] \
+        = torch.randint(image_repr.vocab_size(), (image_repr.grid_size(),))
 
 
 def onset_env_temperature(onset_env,
@@ -149,7 +154,7 @@ def onset_env_circle_noise(image_repr,
     if state is None:
         state = 0.0
 
-    delta = 3.0 * max(0.0, strength - 0.5) / math.pi
+    delta = 8.0 * max(0.0, strength - 0.5) / math.pi
     
     print('circle_noise', state, strength, delta)
 
