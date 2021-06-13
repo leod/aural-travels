@@ -42,12 +42,12 @@ def keyframes(model,
         noise(time, time + time_step, last_image_seq)
 
 
-def interpolate(image_repr, keyframes, interframes):
+def interpolate(image_repr, keyframes, interframes, topk=False):
     last_keyframe = next(keyframes)
 
     for keyframe in keyframes:
         for i in range(interframes):
-            yield image_repr.decode(last_keyframe, keyframe, alpha=i/interframes)[0]
+            yield image_repr.decode(last_keyframe, keyframe, alpha=i/interframes, topk=topk)[0]
 
         last_keyframe = keyframe
 
@@ -125,7 +125,7 @@ def onset_env_bump_noise(image_repr,
     next_idx = math.ceil(next_time * sample_rate / hop_length)
 
     strength = np.mean(onset_env[idx:next_idx])
-    size = max(0, int(round((strength - 1) * 8)))
+    size = max(0, int(round((strength - 1) * 6)))
 
     print('bump_noise', time, strength, size)
     image_seq = image_seq.view(1, image_repr.grid_size(), image_repr.grid_size())

@@ -150,7 +150,7 @@ class VQGANImageRepr(ImageRepr):
         return indices.view(image_tensor.shape[0], -1)
 
     @torch.no_grad()
-    def decode(self, image_seq, image_seq2=None, alpha=None):
+    def decode(self, image_seq, image_seq2=None, alpha=None, topk=False):
         # Not much of an idea what is happening here with the shapes to be honest.
         # https://github.com/CompVis/taming-transformers/blob/8549d3aaa09446bafc26efa032157c04833ca3ff/taming/models/cond_transformer.py#L157
 
@@ -158,12 +158,31 @@ class VQGANImageRepr(ImageRepr):
 
         # ??? what ???
         bhwc = (image_seq.shape[0], 16, 16, 256)
-        emb = self.model.quantize.get_codebook_entry(image_seq.reshape(-1), shape=bhwc)
 
-        if image_seq2 is not None:
-            emb2 = self.model.quantize.get_codebook_entry(image_seq2.reshape(-1), shape=bhwc)
-            return self.model.decode((1.0 - alpha) * emb + alpha * emb2)
+        if not topk:
+            emb = self.model.quantize.get_codebook_entry(image_seq.reshape(-1), shape=bhwc)
+            if image_seq2 is not None:
+                emb2 = self.model.quantize.get_codebook_entry(image_seq2.reshape(-1), shape=bhwc)
+                return self.model.decode((1.0 - alpha) * emb + alpha * emb2)
+            else:
+                return self.model.decode(emb)
         else:
+            assert image_seq2 is not None
+
+            W = self.model.quantize.embedding.weight
+
+            emb = W[image_seq]
+            emb2 = W[image_seq2]
+            x = (1.0 - alpha) * emb + alpha * emb2
+
+            W2 = torch.tile(W[None, :, :], (256, 1, 1))
+            x2 = torch.tile(x.view(-1, 256)[:, None, :], (1024, 1))
+
+            d = (W2 - x2).pow(2).sum(dim=-1)
+            _, idx = torch.topk(-d, k=1, dim=1)
+            idx = idx.view(x.shape[0], 256)
+
+            emb = self.model.quantize.get_codebook_entry(idx.reshape(-1), shape=bhwc)
             return self.model.decode(emb)
 
     def tensor_to_image(self, image_tensor):
