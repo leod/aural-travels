@@ -119,13 +119,14 @@ def onset_env_bump_noise(image_repr,
                          time,
                          next_time,
                          image_seq,
+                         scale,
                          sample_rate=22050,
                          hop_length=512):
     idx = math.floor(time * sample_rate / hop_length)
     next_idx = math.ceil(next_time * sample_rate / hop_length)
 
     strength = np.mean(onset_env[idx:next_idx])
-    size = max(0, int(round((strength - 1) * 6)))
+    size = max(0, int(round((strength - 1) * scale)))
 
     print('bump_noise', time, strength, size)
     image_seq = image_seq.view(1, image_repr.grid_size(), image_repr.grid_size())
