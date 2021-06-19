@@ -74,16 +74,17 @@ class AudioDALLENAT(nn.Module):
                                                               dtype=torch.long))
         return image_emb
 
-    def forward(self, audio_seq, control, input_image_seq, target_image_seq, return_logits=False):
+    def _input(self, audio_seq, control, input_image_seq):
         audio_emb = self._audio_input(audio_seq)
         control_emb = torch.cat([self.control_embs[i](control[:, i] + 64)[:, None, :]
                                  for i in range(control.shape[1])],
                                 dim=1)
         input_image_emb = self._image_input(input_image_seq)
 
-        input = torch.cat((audio_emb, control_emb, input_image_emb), dim=1)
+        return torch.cat((audio_emb, control_emb, input_image_emb), dim=1)
 
-        output = self.transformer(input)
+    def forward(self, audio_seq, control, input_image_seq, target_image_seq, return_logits=False):
+        output = self.transformer(self._input(audio_seq, control, input_image_seq))
         output = output[:, audio_emb.shape[1] + self.control_num_features + 1:, :]
 
         logits = self.output(output)
@@ -99,22 +100,16 @@ class AudioDALLENAT(nn.Module):
     @torch.no_grad()
     def generate_image_seq(self,
                            audio_seq,
-                           input_image_seq=None,
+                           control,
+                           input_image_seq,
                            temperature=1.0,
                            top_k=0,
                            return_logits=False,
                            map_logits=None):
         audio_emb = self._audio_input(audio_seq) 
 
-        if input_image_seq is None:
-            input_image_seq = torch.randint(self.image_repr.vocab_size(),
-                                              (audio_seq.shape[0], self.image_seq_len),
-                                              device=audio_emb.device)
-
-        input_image_emb = self._image_input(input_image_seq)
-        input = torch.cat((audio_emb, input_image_emb), dim=1)
-        output = self.transformer(input)
-        output = output[:,self.audio_seq_len+1:, :]
+        output = self.transformer(self._input(audio_seq, control, input_image_seq))
+        output = output[:, self.audio_seq_len + self.control_num_features + 1:, :]
 
         logits = self.output(output)
         if map_logits:
