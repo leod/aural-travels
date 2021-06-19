@@ -138,7 +138,7 @@ class CoverGenerationDataset(Dataset):
 
         image = load_image(self.data_dir, self.tracks[idx]['id'])
 
-        result = {'audio': mel_slice, 'image': image}
+        result = {'audio_seq': mel_slice, 'image': image}
 
         if self.map_item is None:
             return result

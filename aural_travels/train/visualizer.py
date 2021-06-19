@@ -14,6 +14,10 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
+from torchvision import transforms
+import torchvision.transforms as T
+import torchvision.transforms.functional as TF
+
 from accelerate import Accelerator
 
 from aural_travels.model import audio_dalle, AudioDALLE, AudioDALLENAT
@@ -39,10 +43,10 @@ def create_image_repr(params):
 
 def create_model(params, image_repr, dataset):
     if params['non_autoregressive']:
-        # TODO: Untested after image_repr refactoring
         model = AudioDALLENAT(image_repr=image_repr,
                               audio_seq_len=dataset.num_samples(),
                               audio_num_features=dataset.num_features(),
+                              control_num_features=3,
                               hidden_size=params['hidden_size'],
                               num_layers=params['num_layers'],
                               num_heads=params['num_heads'],
@@ -50,6 +54,7 @@ def create_model(params, image_repr, dataset):
                               ffnn_dropout=params['ffnn_dropout'],
                               axial_attention=params['axial_attention'])
     else:
+        # TODO: Untested after image_repr refactoring
         model = AudioDALLE(image_repr=image_repr,
                            audio_seq_len=dataset.num_samples(),
                            audio_num_features=dataset.num_features(),
@@ -60,47 +65,6 @@ def create_model(params, image_repr, dataset):
                            ffnn_dropout=params['ffnn_dropout'])
 
     return model
-
-
-def encode_images(soundcloud_data_dir, num_workers, image_repr, split):
-    # We reuse the GenrePredictionDataset because it nicely loads the image data, but we don't care
-    # about the genre here. 
-    input_transform = lambda image: image_repr.image_to_tensor(image)[0]
-    dataset = soundcloud.GenrePredictionDataset(soundcloud_data_dir,
-                                                split=split,
-                                                input_transform=input_transform)
-    loader = DataLoader(dataset,
-                        batch_size=64,
-                        shuffle=False,
-                        num_workers=num_workers)
-    encoding = []
-
-    image_repr = image_repr.to('cuda')
-
-    with torch.no_grad():
-        for tensor, _ in tqdm(loader):
-            tensor = tensor.to('cuda')
-            encoding.append(image_repr.encode(tensor).detach().cpu())
-
-    return torch.cat(encoding)
-
-
-def load_or_encode_images(soundcloud_data_dir, encoding_dir, num_workers, image_repr, split):
-    encoding_path = os.path.join(encoding_dir, split + '.pt')
-
-    if not os.path.exists(encoding_path):
-        logger.info(f'Encoding dataset "{split}", will save at "{encoding_path}"')
-        encoding = encode_images(soundcloud_data_dir=soundcloud_data_dir,
-                                 num_workers=num_workers,
-                                 image_repr=image_repr,
-                                 split=split)
-        torch.save(encoding, encoding_path)
-    else:
-        logger.info(f'Using precomputed encodings at "{encoding_path}"')
-        encoding = torch.load(encoding_path)
-
-    logger.info(f'Encoding shape: {encoding.size()}')
-    return encoding
 
 
 def apply_corruption(mode, vocab_size, image_seq):
@@ -127,16 +91,83 @@ def apply_corruption(mode, vocab_size, image_seq):
     return image_seq
 
 
-def load_dataset(params, split, encodings=None):
+def resize(image):
+    s = min(image.size)
+    r = 256 / s
+    s = round(r * image.size[1]), round(r * image.size[0])
+    #image = TF.resize(image, s, interpolation=TF.InterpolationMode.LANCZOS)
+    image = TF.resize(image, s, interpolation=TF.InterpolationMode.NEAREST)
+
+    return image
+
+
+def zoom_pair(image_repr, item):
+    image = item['image']
+
+    width, height = image.size[0], image.size[1]
+    assert width == height
+    
+    size1 = random.randint(1, width)
+    
+    x1 = random.uniform(size1/2, width - size1/2)
+    y1 = random.uniform(size1/2, height - size1/2)
+
+    if random.random() < 0.2:
+        margin1 = 0
+    else:
+        margin1 = min(x1 - size1/2,
+                      y1 - size1/2,
+                      width - (x1 + size1/2),
+                      height - (y1 + size1/2),
+                      1.5 * size1,
+                      64)
+        
+    expand = random.uniform(0, margin1)
+    size2 = size1 + expand
+    
+    if random.random() < 0.2:
+        dx = 0
+        dy = 0
+    else:
+        min_dx = -min(x1 - size2/2, 0.5 * size1, 64)
+        max_dx = min(width - (x1 + size2/2), 0.5 * size1, 64)
+        
+        min_dy = -min(y1 - size2/2, 0.5 * size1, 64)
+        max_dy = min(width - (y1 + size2/2), 0.5 * size1, 64)
+        
+        dx = random.uniform(min_dx, max_dx)
+        dy = random.uniform(min_dy, max_dy)
+    
+    x2 = x1 + dx
+    y2 = y1 + dy
+    
+    image1 = TF.crop(image, top=y1 - size1/2, left=x1 - size1/2, height=size1, width=size1)
+    image2 = TF.crop(image, top=y2 - size2/2, left=x2 - size2/2, height=size2, width=size2)
+    
+    #print(f'expand={expand:.4f}, dx={dx:.4f}, dy={dy:.4f}, margin1={margin1:.4f}, size1={size1}, size2={size2}')
+
+    del item['image']
+    item['input_image'] = image_repr.image_to_tensor(resize(image1))[0]
+    item['target_image'] = image_repr.image_to_tensor(resize(image2))[0]
+    item['control'] = torch.tensor([dx, dy, expand], dtype=torch.long)
+
+
+def prepare_batch(params, model, batch):
+    batch['input_image_seq'] = model.image_repr.encode(batch['input_image']) 
+    batch['target_image_seq'] = model.image_repr.encode(batch['target_image']) 
+    del batch['input_image']
+    del batch['target_image']
+
+    return batch, 'zoom_pair'
+
+
+def load_dataset(params, image_repr, split):
     def map_item(item):
-        mel, image_seq = item
-        corrupt_image_seq = apply_corruption(params['corrupt_image_mode'],
-                                             vocab_size=
-        return mel, image_seq
+        zoom_pair(image_repr, item)
+        return item 
 
     return soundcloud.CoverGenerationDataset(data_dir=params['soundcloud_data_dir'],
                                              split=split,
-                                             image_labels=encodings,
                                              sample_secs=params['sample_secs'],
                                              n_fft=params['n_fft'],
                                              hop_length=params['hop_length'],
@@ -177,7 +208,7 @@ def evaluate(params, model, dataloader):
     with torch.no_grad():
         for batch in tqdm(dataloader):
             batch, batch_mode = prepare_batch(params, model, batch)
-            batch_loss = model(*batch).item()
+            batch_loss = model(**batch).item()
 
             loss += batch_loss
             loss_mode[batch_mode] += batch_loss
@@ -192,6 +223,7 @@ def evaluate(params, model, dataloader):
 def train(params, model, optimizer, dataloaders):
     # Need to reimplement this.
     assert params['expose_steps'] is None
+    assert params['corrupt_image_mode'] is None
 
     accelerator = Accelerator()
 
@@ -214,7 +246,7 @@ def train(params, model, optimizer, dataloaders):
         for i, batch in tqdm(enumerate(dataloader_training)):
             batch, batch_mode = prepare_batch(params, model, batch)
 
-            loss = model(*batch)
+            loss = model(**batch)
             loss = loss / params['gradient_accumulation']
             accelerator.backward(loss)
 
