@@ -85,7 +85,6 @@ class CoverGenerationDataset(Dataset):
     def __init__(self,
                  data_dir,
                  split,
-                 image_labels=None,
                  sample_secs=2.0,
                  sample_rate=22050,
                  n_fft=2048, # ~93ms at 22050Hz
@@ -93,10 +92,10 @@ class CoverGenerationDataset(Dataset):
                  normalize_mfcc=True,
                  mfcc_mean=MFCC_MEAN,
                  mfcc_std=MFCC_STD,
-                 toy_data=False):
+                 toy_data=False,
+                 map_item=None):
         self.data_dir = data_dir
         self.split = split
-        self.image_labels = image_labels
         self.sample_secs = sample_secs
         self.sample_rate = sample_rate
         self.n_fft = n_fft
@@ -107,6 +106,7 @@ class CoverGenerationDataset(Dataset):
         if mfcc_std:
             self.mfcc_std_inv = 1.0 / torch.tensor(mfcc_std)
         self.toy_data = toy_data
+        self.map_item = map_item
 
         self.tracks = tracks_split(load_tracks(data_dir), split)
 
@@ -123,9 +123,9 @@ class CoverGenerationDataset(Dataset):
             # Use fixed song-dependent random seed for evaluating on static validation/test sets.
             random.seed(idx)
         else:
-            # TODO
             # Use torch random seed, which is initialized differently for each data worker and for
             # each epoch.
+            random.seed(torch.randint(10000000, (1,)).item())
             ...
             
         offset = random.randint(0, len(mel))
@@ -136,11 +136,14 @@ class CoverGenerationDataset(Dataset):
         if self.normalize_mfcc:
             mel_slice = (mel_slice - self.mfcc_mean) * self.mfcc_std_inv
 
-        result = mel_slice,
-        if self.image_labels is not None:
-            result += self.image_labels[idx],
+        image = load_image(self.data_dir, self.tracks[idx]['id'])
 
-        return result
+        result = {'audio': mel_slice, 'image': image}
+
+        if self.map_item is None:
+            return result
+        else:
+            return self.map_item(result)
 
     def load_features(self, idx):
         # Features have been precomputed by `tools/compute_visualizer_features.py`.
