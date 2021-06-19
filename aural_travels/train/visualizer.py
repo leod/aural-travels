@@ -103,14 +103,45 @@ def load_or_encode_images(soundcloud_data_dir, encoding_dir, num_workers, image_
     return encoding
 
 
+def apply_corruption(mode, vocab_size, image_seq):
+    seq_len = image_seq.shape[0]
+
+    if mode == 'uniform':
+        k = random.randint(0, seq_len)
+        idxs = random.sample(list(range(seq_len)), k=k)
+
+        for idx in idxs:
+            image_seq[idx] = random.randint(0, vocab_size-1)
+    elif mode == 'full':
+        for idx in range(seq_len):
+            image_seq[idx] = random.randint(0, vocab_size-1)
+    elif mode == 'uniform_and_full':
+        p = 0.2
+        if random.random() < p:
+            return corrupt_image_seq('full', vocab_size, image_seq)
+        else:
+            return corrupt_image_seq('uniform', vocab_size, image_seq)
+    else:
+        assert False, f'unknown image corruption mode: {mode}'
+
+    return image_seq
+
+
 def load_dataset(params, split, encodings=None):
+    def map_item(item):
+        mel, image_seq = item
+        corrupt_image_seq = apply_corruption(params['corrupt_image_mode'],
+                                             vocab_size=
+        return mel, image_seq
+
     return soundcloud.CoverGenerationDataset(data_dir=params['soundcloud_data_dir'],
                                              split=split,
                                              image_labels=encodings,
                                              sample_secs=params['sample_secs'],
                                              n_fft=params['n_fft'],
                                              hop_length=params['hop_length'],
-                                             toy_data=params['toy_data'])
+                                             toy_data=params['toy_data'],
+                                             map_item=map_item)
 
 
 def save_checkpoint(model, optimizer, epoch, global_step, path):
@@ -138,77 +169,6 @@ def load_checkpoint(model, optimizer, path=None):
     return model, optimizer, epoch, global_step
 
 
-def corrupt_image_seq(mode, vocab_size, image_seq):
-    seq_len = image_seq.shape[0]
-
-    if mode == 'uniform':
-        k = random.randint(0, seq_len)
-        idxs = random.sample(list(range(seq_len)), k=k)
-
-        for idx in idxs:
-            image_seq[idx] = random.randint(0, vocab_size-1)
-    elif mode == 'full':
-        for idx in range(seq_len):
-            image_seq[idx] = random.randint(0, vocab_size-1)
-    elif mode == 'uniform_and_full':
-        p = 0.2
-        if random.random() < p:
-            return corrupt_image_seq('full', vocab_size, image_seq)
-        else:
-            return corrupt_image_seq('uniform', vocab_size, image_seq)
-    else:
-        assert False, f'unknown image corruption mode: {mode}'
-
-    return image_seq
-
-
-def corrupt_image_seq_batch(mode, vocab_size, image_seqs):
-    corrupt_image_seqs = image_seqs.clone()
-
-    for i in range(image_seqs.shape[0]):
-        corrupt_image_seq(mode, vocab_size, corrupt_image_seqs[i])
-
-    return corrupt_image_seqs
-
-
-def prepare_batch(params, model, batch):
-    if params['corrupt_image_mode'] is not None:
-        if params['expose_steps'] is None:
-            batch.append(corrupt_image_seq_batch(params['corrupt_image_mode'],
-                                                 model.image_repr.vocab_size(),
-                                                 batch[1]))
-            mode = 'corrupt'
-        else:
-            # FIXME: This is non-deterministic for validation/test set...
-
-            parts = []
-
-            if random.random() < params['expose_alpha']:
-                last_image_seqs = corrupt_image_seq_batch('full',
-                                                          model.image_repr.vocab_size(),
-                                                          batch[1])
-                #last_image_seqs = batch[1].clone()
-                last_image_seqs = torch.zeros_like(batch[1])
-
-                for l in range(params['expose_steps']):
-                    parts.append([batch[0], batch[1], last_image_seqs])
-                    last_image_seqs = model.generate_image_seq(batch[0],
-                                                               corrupt_image_seq=last_image_seqs,
-                                                               top_k=1)
-                mode = 'expose'
-            else:
-                for l in range(params['expose_steps']):
-                    corrupt_image_seqs = corrupt_image_seq_batch(params['corrupt_image_mode'],
-                                                                 model.image_repr.vocab_size(),
-                                                                 batch[1])
-                    parts.append([batch[0], batch[1], corrupt_image_seqs])
-                mode = 'corrupt'
-
-            batch = [torch.cat([part[i] for part in parts], dim=0) for i in range(3)]
-
-    return batch, mode
-
-
 def evaluate(params, model, dataloader):
     model.eval()
     loss = 0
@@ -230,6 +190,9 @@ def evaluate(params, model, dataloader):
 
 
 def train(params, model, optimizer, dataloaders):
+    # Need to reimplement this.
+    assert params['expose_steps'] is None
+
     accelerator = Accelerator()
 
     writer = SummaryWriter(params['output_dir'])

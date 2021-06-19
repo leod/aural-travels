@@ -54,6 +54,12 @@ class ImageRepr(nn.Module, ABC):
     def zeros_image_seq(self, batch_size, device):
         return torch.zeros((batch_size, self.grid_size()**2), dtype=torch.long, device=device)
 
+    def roundtrip(self, image):
+        image_tensor = self.image_to_tensor(image)
+        image_seq = self.encode(image_tensor)
+        image_tensor = self.decode(image_seq)[0]
+        image = self.tensor_to_image(image_tensor)
+        return image
 
 class DALLEImageRepr(ImageRepr):
     def __init__(self):
