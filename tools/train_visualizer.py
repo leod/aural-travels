@@ -45,20 +45,12 @@ def run(params):
     np.random.seed(args.seed)
 
     os.makedirs(params['output_dir'], exist_ok=True)
-    os.makedirs(params['encoding_dir'], exist_ok=True)
     with open(os.path.join(params['output_dir'], 'params.json'), 'w') as f:
         json.dump(params, f, indent=4)
 
     image_repr = visualizer.create_image_repr(params)
 
-    encodings = {split: visualizer.load_or_encode_images(params['soundcloud_data_dir'],
-                                                         params['encoding_dir'],
-                                                         params['num_workers'],
-                                                         image_repr,
-                                                         split=split)
-                 for split in ['validation', 'test', 'training']}
-
-    datasets = {split: visualizer.load_dataset(params, split, encodings[split])
+    datasets = {split: visualizer.load_dataset(params, image_repr, split)
                 for split in ['validation', 'test', 'training']}
 
     model = visualizer.create_model(params, image_repr, datasets['training'])
@@ -157,9 +149,6 @@ if __name__ == '__main__':
                         help='Evaluate on validation est after this many training steps',
                         default=30,
                         type=int)
-    parser.add_argument('--encoding_dir',
-                        help='Directory to cache encodings in',
-                        required=True)
     parser.add_argument('--non_autoregressive',
                         help='Use non-autoregressive model',
                         action='store_true')

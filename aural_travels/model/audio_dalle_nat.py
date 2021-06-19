@@ -13,6 +13,7 @@ class AudioDALLENAT(nn.Module):
                  image_repr,
                  audio_seq_len,
                  audio_num_features,
+                 control_num_features,
                  hidden_size, 
                  num_layers,
                  num_heads,
@@ -24,6 +25,7 @@ class AudioDALLENAT(nn.Module):
         self.image_repr = image_repr
         self.audio_seq_len = audio_seq_len
         self.audio_num_features = audio_num_features
+        self.control_num_features = control_num_features
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.num_heads = num_heads
@@ -38,14 +40,15 @@ class AudioDALLENAT(nn.Module):
         self.image_emb = nn.Embedding(self.image_repr.vocab_size() + 1, hidden_size) # +1 for <bos>
         self.audio_pos_emb = nn.Embedding(audio_seq_len + 1, hidden_size) # +1 for <bos>
 
-        # FIXME: Does the order of VQGAN's tokens work with axial positional embedding?
         self.image_pos_emb = AxialPositionalEmbedding(hidden_size,
                                                       axial_shape=(image_repr.grid_size(),
                                                                    image_repr.grid_size()))
 
+        self.control_embs = nn.ModuleList(nn.Embedding(128, hidden_size) for _
+                                          in range(control_num_features))
         self.transformer = TransformerNAT(hidden_size=hidden_size,
                                           num_layers=num_layers,
-                                          context_len=self.audio_seq_len + 1,
+                                          context_len=self.audio_seq_len + control_num_features + 1,
                                           grid_size=self.image_repr.grid_size(),
                                           axial_attention=axial_attention)
         self.input = nn.Linear(audio_num_features, hidden_size)
@@ -71,14 +74,17 @@ class AudioDALLENAT(nn.Module):
                                                               dtype=torch.long))
         return image_emb
 
-    def forward(self, audio_seq, target_image_seq, corrupt_image_seq, return_logits=False):
+    def forward(self, audio_seq, control, input_image_seq, target_image_seq, return_logits=False):
         audio_emb = self._audio_input(audio_seq)
-        corrupt_image_emb = self._image_input(corrupt_image_seq)
+        control_emb = torch.cat([self.control_embs[i](control[:, i] + 64)[:, None, :]
+                                 for i in range(control.shape[1])],
+                                dim=1)
+        input_image_emb = self._image_input(input_image_seq)
 
-        input = torch.cat((audio_emb, corrupt_image_emb), dim=1)
+        input = torch.cat((audio_emb, control_emb, input_image_emb), dim=1)
 
         output = self.transformer(input)
-        output = output[:, audio_emb.shape[1]+1:, :]
+        output = output[:, audio_emb.shape[1] + self.control_num_features + 1:, :]
 
         logits = self.output(output)
         logits_for_ce = torch.transpose(logits, 1, 2)
@@ -93,20 +99,20 @@ class AudioDALLENAT(nn.Module):
     @torch.no_grad()
     def generate_image_seq(self,
                            audio_seq,
-                           corrupt_image_seq=None,
+                           input_image_seq=None,
                            temperature=1.0,
                            top_k=0,
                            return_logits=False,
                            map_logits=None):
         audio_emb = self._audio_input(audio_seq) 
 
-        if corrupt_image_seq is None:
-            corrupt_image_seq = torch.randint(self.image_repr.vocab_size(),
+        if input_image_seq is None:
+            input_image_seq = torch.randint(self.image_repr.vocab_size(),
                                               (audio_seq.shape[0], self.image_seq_len),
                                               device=audio_emb.device)
 
-        corrupt_image_emb = self._image_input(corrupt_image_seq)
-        input = torch.cat((audio_emb, corrupt_image_emb), dim=1)
+        input_image_emb = self._image_input(input_image_seq)
+        input = torch.cat((audio_emb, input_image_emb), dim=1)
         output = self.transformer(input)
         output = output[:,self.audio_seq_len+1:, :]
 
