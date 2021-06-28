@@ -196,13 +196,13 @@ class TransformerNAT(nn.Module):
     def __init__(self,
                  hidden_size,
                  num_layers,
-                 context_len,
-                 grid_size,
                  num_heads=8,
                  ffnn_mult=2,
                  ffnn_dropout=0.1,
                  attention_dropout=0.1,
-                 axial_attention=False):
+                 axial_attention=False,
+                 grid_size=None,
+                 context_len=None):
         super().__init__()
 
         if axial_attention:
@@ -218,7 +218,8 @@ class TransformerNAT(nn.Module):
                                                  num_heads=num_heads,
                                                  dropout=attention_dropout)
 
-        block = lambda depth, layer: LayerScale(hidden_size, depth, PreNorm(hidden_size, layer))
+        #block = lambda depth, layer: LayerScale(hidden_size, depth, PreNorm(hidden_size, layer))
+        block = lambda depth, layer: PreNorm(hidden_size, layer)
 
         layers = [[block(depth, attention(depth)),
                    block(depth, FeedForward(hidden_size,

@@ -118,10 +118,18 @@ if __name__ == '__main__':
                         help='Transformer number of layers',
                         type=int,
                         default=8)
+    parser.add_argument('--num_enc_layers',
+                        help='Transformer number of encoder layers',
+                        type=int,
+                        default=1)
+    parser.add_argument('--num_dec_layers',
+                        help='Transformer number of encoder layers',
+                        type=int,
+                        default=2)
     parser.add_argument('--num_heads',
                         help='Transformer number of attention heads',
                         type=int,
-                        default=8)
+                        default=1)
     parser.add_argument('--attention_dropout',
                         help='Dropout for attention layers',
                         type=float,
@@ -188,6 +196,8 @@ if __name__ == '__main__':
     parser.add_argument('--image_repr',
                         help='Model to use for image representation',
                         choices=['dalle', 'vqgan'])
+    parser.add_argument('--model',
+                        choices=['audio_dalle', 'audio_dalle_nat', 'bottleneck_gen'])
     args = parser.parse_args()
 
     run(vars(args))

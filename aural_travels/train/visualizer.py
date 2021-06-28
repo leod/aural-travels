@@ -16,7 +16,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from accelerate import Accelerator
 
-from aural_travels.model import audio_dalle, AudioDALLE, AudioDALLENAT
+from aural_travels.model import audio_dalle, AudioDALLE, AudioDALLENAT, BottleneckGen
 from aural_travels.model.image_repr import DALLEImageRepr, VQGANImageRepr
 from aural_travels.data import soundcloud
 
@@ -38,7 +38,7 @@ def create_image_repr(params):
 
 
 def create_model(params, image_repr, dataset):
-    if params['non_autoregressive']:
+    if params['model'] == 'audio_dalle_nat':
         # TODO: Untested after image_repr refactoring
         model = AudioDALLENAT(image_repr=image_repr,
                               audio_seq_len=dataset.num_samples(),
@@ -49,7 +49,7 @@ def create_model(params, image_repr, dataset):
                               attention_dropout=params['attention_dropout'],
                               ffnn_dropout=params['ffnn_dropout'],
                               axial_attention=params['axial_attention'])
-    else:
+    elif params['model'] == 'audio_dalle':
         model = AudioDALLE(image_repr=image_repr,
                            audio_seq_len=dataset.num_samples(),
                            audio_num_features=dataset.num_features(),
@@ -58,6 +58,16 @@ def create_model(params, image_repr, dataset):
                            num_heads=params['num_heads'],
                            attention_dropout=params['attention_dropout'],
                            ffnn_dropout=params['ffnn_dropout'])
+    elif params['model'] == 'bottleneck_gen':
+        model = BottleneckGen(image_repr=image_repr,
+                              audio_seq_len=dataset.num_samples(),
+                              audio_num_features=dataset.num_features(),
+                              hidden_size=params['hidden_size'],
+                              num_enc_layers=params['num_enc_layers'],
+                              num_dec_layers=params['num_dec_layers'],
+                              num_heads=params['num_heads'],
+                              attention_dropout=params['attention_dropout'],
+                              ffnn_dropout=params['ffnn_dropout'])
 
     return model
 
@@ -205,6 +215,8 @@ def prepare_batch(params, model, batch):
                 mode = 'corrupt'
 
             batch = [torch.cat([part[i] for part in parts], dim=0) for i in range(3)]
+    else:
+        mode = 'generate'
 
     return batch, mode
 
