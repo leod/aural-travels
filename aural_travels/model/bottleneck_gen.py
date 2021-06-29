@@ -59,26 +59,28 @@ class BottleneckGen(nn.Module):
         return audio_emb
 
     def forward(self, audio_seq, target_image_seq):
-        logits = self.calc_logits(audio_seq)
+        logits = self.calc_logits(self.calc_audio_emb(audio_seq))
         logits = torch.transpose(logits, 1, 2)
 
         loss = F.cross_entropy(logits, target_image_seq)
         return loss
 
-    def calc_logits(self, audio_seq):
-        audio_emb = self._audio_input(audio_seq)
-        audio_emb = self.audio_encoder(audio_emb)
-        audio_emb = torch.mean(audio_emb, dim=1)[:, None, :]
+    def calc_logits(self, audio_emb):
         audio_emb = torch.tile(audio_emb, (self.image_seq_len, 1))
         audio_emb += self.image_pos_emb(audio_emb)
         image_emb = self.image_decoder(audio_emb)
         return self.image_output(image_emb)
 
+    def calc_audio_emb(self, audio_seq):
+        audio_emb = self._audio_input(audio_seq)
+        audio_emb = self.audio_encoder(audio_emb)
+        return torch.mean(audio_emb, dim=1)[:, None, :]
+
     def generate_image_seq(self,
-                           audio_seq,
+                           audio_emb,
                            temperature=1.0,
-                           top_k=0):
-        logits = self.calc_logits(audio_seq)
+                           top_k=1):
+        logits = self.calc_logits(audio_emb)
 
         if top_k > 0:
             indices_to_remove = logits < torch.topk(logits, top_k)[0][..., -1, None]
@@ -88,6 +90,6 @@ class BottleneckGen(nn.Module):
 
         probs = rearrange(probs, 'b n v -> (b n) v')
         image_seq = torch.multinomial(probs, 1)[..., 0]
-        image_seq = rearrange(image_seq, '(b n) -> b n', b=audio_seq.shape[0])
+        image_seq = rearrange(image_seq, '(b n) -> b n', b=logits.shape[0])
 
         return image_seq
