@@ -8,14 +8,10 @@ import torch
 
 def keyframes(model,
               mel,
-              last_image_seq,
               fps,
-              top_k=0,
-              temperature=lambda time, next_time: 1.0,
               sample_rate=22050,
               hop_length=1024,
               num_mel_samples=42,
-              noise=None,
               device=None):
     mel_frame_duration = hop_length / sample_rate
 
@@ -27,27 +23,20 @@ def keyframes(model,
         mel_sample_idx = int(time / mel_frame_duration)
         mel_slice = mel[None, mel_sample_idx:mel_sample_idx+num_mel_samples].to(device)
 
-        tau = temperature(time, time + time_step)
-        print('temp', tau)
+        yield model.calc_audio_emb(mel_slice)
 
-        image_seq = model.generate_image_seq(mel_slice,
-                                             top_k=top_k,
-                                             temperature=tau,
-                                             corrupt_image_seq=last_image_seq)
-        yield image_seq.clone()
-
-        last_image_seq = image_seq
         time += time_step
 
-        noise(time, time + time_step, last_image_seq)
 
-
-def interpolate(image_repr, keyframes, interframes, topk=False):
+def interpolate(model, keyframes, interframes, topk=False):
     last_keyframe = next(keyframes)
 
     for keyframe in keyframes:
         for i in range(interframes):
-            yield image_repr.decode(last_keyframe, keyframe, alpha=i/interframes, topk=topk)[0]
+            alpha = i/interframes
+            audio_emb = (1.0-alpha) * last_keyframe + alpha * keyframe
+            image_seq = model.generate_image_seq(audio_emb, top_k=1)
+            yield model.image_repr.decode(image_seq)[0]
 
         last_keyframe = keyframe
 
