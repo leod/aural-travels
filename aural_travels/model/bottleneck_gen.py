@@ -58,15 +58,35 @@ class BottleneckGen(nn.Module):
 
         return audio_emb
 
-    def forward(self, audio_seq, target_image_seq):
-        logits = self.calc_logits(self.calc_audio_emb(audio_seq))
-        logits = torch.transpose(logits, 1, 2)
+    def forward(self, audio_seq1, target_image_seq, audio_seq2=None):
+        audio_emb1 = self.calc_audio_emb(audio_seq1)
+        logits1 = self.calc_logits(audio_emb1)
+        logits1 = torch.transpose(logits1, 1, 2)
+        generate_loss1 = F.cross_entropy(logits1, target_image_seq)
 
-        loss = F.cross_entropy(logits, target_image_seq)
-        return loss
+        if audio_seq2 is None:
+            return generate_loss1,
+        else:
+            audio_emb2 = self.calc_audio_emb(audio_seq2)
+            logits2 = self.calc_logits(audio_emb2)
+            logits2 = torch.transpose(logits2, 1, 2)
+            generate_loss2 = F.cross_entropy(logits2, target_image_seq)
+
+            generate_loss = (generate_loss1 + generate_loss2) / 2.0
+
+            audio_emb1 = 5.0 * F.normalize(audio_emb1)
+            audio_emb2 = 5.0 * F.normalize(audio_emb2)
+            cosine_sims = torch.matmul(audio_emb1, audio_emb2.t())
+
+            targets = torch.arange(audio_seq1.shape[0], device=audio_seq1.device)
+            contrastive_loss1 = F.cross_entropy(cosine_sims, targets)
+            contrastive_loss2 = F.cross_entropy(cosine_sims.t(), targets)
+            contrastive_loss = (contrastive_loss1 + contrastive_loss2) / 2.0
+
+            return generate_loss, contrastive_loss
 
     def calc_logits(self, audio_emb):
-        audio_emb = torch.tile(audio_emb, (self.image_seq_len, 1))
+        audio_emb = torch.tile(audio_emb[:, None, :], (self.image_seq_len, 1))
         audio_emb += self.image_pos_emb(audio_emb)
         image_emb = self.image_decoder(audio_emb)
         return self.image_output(image_emb)
@@ -74,7 +94,7 @@ class BottleneckGen(nn.Module):
     def calc_audio_emb(self, audio_seq):
         audio_emb = self._audio_input(audio_seq)
         audio_emb = self.audio_encoder(audio_emb)
-        return torch.mean(audio_emb, dim=1)[:, None, :]
+        return torch.mean(audio_emb, dim=1)
 
     def generate_image_seq(self,
                            audio_emb,

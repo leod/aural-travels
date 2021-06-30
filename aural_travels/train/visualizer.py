@@ -120,7 +120,8 @@ def load_dataset(params, split, encodings=None):
                                              sample_secs=params['sample_secs'],
                                              n_fft=params['n_fft'],
                                              hop_length=params['hop_length'],
-                                             toy_data=params['toy_data'])
+                                             toy_data=params['toy_data'],
+                                             audio_pairs='contrastive_lambda' in params)
 
 
 def save_checkpoint(model, optimizer, epoch, global_step, path):
@@ -148,96 +149,29 @@ def load_checkpoint(model, optimizer, path=None):
     return model, optimizer, epoch, global_step
 
 
-def corrupt_image_seq(mode, vocab_size, image_seq):
-    seq_len = image_seq.shape[0]
-
-    if mode == 'uniform':
-        k = random.randint(0, seq_len)
-        idxs = random.sample(list(range(seq_len)), k=k)
-
-        for idx in idxs:
-            image_seq[idx] = random.randint(0, vocab_size-1)
-    elif mode == 'full':
-        for idx in range(seq_len):
-            image_seq[idx] = random.randint(0, vocab_size-1)
-    elif mode == 'uniform_and_full':
-        p = 0.2
-        if random.random() < p:
-            return corrupt_image_seq('full', vocab_size, image_seq)
-        else:
-            return corrupt_image_seq('uniform', vocab_size, image_seq)
-    else:
-        assert False, f'unknown image corruption mode: {mode}'
-
-    return image_seq
-
-
-def corrupt_image_seq_batch(mode, vocab_size, image_seqs):
-    corrupt_image_seqs = image_seqs.clone()
-
-    for i in range(image_seqs.shape[0]):
-        corrupt_image_seq(mode, vocab_size, corrupt_image_seqs[i])
-
-    return corrupt_image_seqs
-
-
-def prepare_batch(params, model, batch):
-    if params['corrupt_image_mode'] is not None:
-        if params['expose_steps'] is None:
-            batch.append(corrupt_image_seq_batch(params['corrupt_image_mode'],
-                                                 model.image_repr.vocab_size(),
-                                                 batch[1]))
-            mode = 'corrupt'
-        else:
-            # FIXME: This is non-deterministic for validation/test set...
-
-            parts = []
-
-            if random.random() < params['expose_alpha']:
-                last_image_seqs = corrupt_image_seq_batch('full',
-                                                          model.image_repr.vocab_size(),
-                                                          batch[1])
-                #last_image_seqs = batch[1].clone()
-                last_image_seqs = torch.zeros_like(batch[1])
-
-                for l in range(params['expose_steps']):
-                    parts.append([batch[0], batch[1], last_image_seqs])
-                    last_image_seqs = model.generate_image_seq(batch[0],
-                                                               corrupt_image_seq=last_image_seqs,
-                                                               top_k=1)
-                mode = 'expose'
-            else:
-                for l in range(params['expose_steps']):
-                    corrupt_image_seqs = corrupt_image_seq_batch(params['corrupt_image_mode'],
-                                                                 model.image_repr.vocab_size(),
-                                                                 batch[1])
-                    parts.append([batch[0], batch[1], corrupt_image_seqs])
-                mode = 'corrupt'
-
-            batch = [torch.cat([part[i] for part in parts], dim=0) for i in range(3)]
-    else:
-        mode = 'generate'
-
-    return batch, mode
-
-
 def evaluate(params, model, dataloader):
     model.eval()
+
     loss = 0
     loss_mode = defaultdict(float)
-    mode_counts = Counter()
+
     with torch.no_grad():
         for batch in tqdm(dataloader):
-            batch, batch_mode = prepare_batch(params, model, batch)
-            batch_loss = model(*batch).item()
+            losses = model(*batch)
 
-            loss += batch_loss
-            loss_mode[batch_mode] += batch_loss
-            mode_counts[batch_mode] += 1
+            if 'contrastive_lambda' in params:
+                loss += (1.0 - params['contrastive_lambda']) * losses[0].item() + \
+                        params['contrastive_lambda'] * losses[1].item()
+                loss_mode['generate'] += losses[0].item()
+                loss_mode['contrastive'] += losses[1].item()
+            else:
+                loss += losses[0].item()
+                loss_mode['generate'] += losses[0].item()
 
     loss /= len(dataloader)
     for mode in loss_mode.keys():
-        loss_mode[mode] /= mode_counts[mode]
+        loss_mode[mode] /= len(dataloader)
+
     return loss, loss_mode
 
 
@@ -258,36 +192,38 @@ def train(params, model, optimizer, dataloaders):
         logger.info(f'Starting epoch {epoch}')
         step_loss = 0.0
         step_loss_mode = defaultdict(float)
-        mode_counts = Counter()
 
         for i, batch in tqdm(enumerate(dataloader_training)):
-            batch, batch_mode = prepare_batch(params, model, batch)
+            losses = model(*batch)
+            losses = [loss / params['gradient_accumulation'] for loss in losses]
 
-            loss = model(*batch)
-            loss = loss / params['gradient_accumulation']
+            if 'contrastive_lambda' in params:
+                loss = (1.0 - params['contrastive_lambda']) * losses[0] + \
+                       params['contrastive_lambda'] * losses[1]
+
+                step_loss_mode['generate'] += losses[0].item()
+                step_loss_mode['contrastive'] += losses[1].item()
+            else:
+                loss = losses[0]
+                step_loss_mode['generate'] += losses[0].item()
+
             accelerator.backward(loss)
 
             step_loss += loss.item()
-            step_loss_mode[batch_mode] += loss.item() * params['gradient_accumulation']
-            mode_counts[batch_mode] += 1
 
             if (i + 1) % params['gradient_accumulation'] == 0:
                 optimizer.step()
                 optimizer.zero_grad()
 
-                for mode in step_loss_mode.keys():
-                    step_loss_mode[mode] /= mode_counts[mode]
-
-                logger.info(f'step {global_step}, {mode_counts}: loss: {step_loss}, '
+                logger.info(f'step {global_step}: loss: {step_loss}, '
                             f'loss by mode: {dict(step_loss_mode)}')
-                writer.add_scalar('loss/train', step_loss, global_step)
 
+                writer.add_scalar('loss/train', step_loss, global_step)
                 for mode, loss in step_loss_mode.items():
                     writer.add_scalar(f'loss/train/{mode}', loss, global_step)
 
                 step_loss = 0.0
                 step_loss_mode = defaultdict(float)
-                mode_counts = Counter()
                 global_step += 1
 
                 if global_step % params['save_steps'] == 0:
