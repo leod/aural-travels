@@ -190,6 +190,9 @@ if __name__ == '__main__':
                         help='Probability of exposing model to its own predictions',
                         default=0.5,
                         type=float)
+    parser.add_argument('--contrastive_lambda',
+                        help='Scaling factor for the contrastive loss',
+                        type=float)
     parser.add_argument('--axial_attention',
                         help='Use axial attention',
                         action='store_true')

@@ -93,6 +93,7 @@ class CoverGenerationDataset(Dataset):
                  normalize_mfcc=True,
                  mfcc_mean=MFCC_MEAN,
                  mfcc_std=MFCC_STD,
+                 audio_pairs=False,
                  toy_data=False):
         self.data_dir = data_dir
         self.split = split
@@ -106,6 +107,7 @@ class CoverGenerationDataset(Dataset):
             self.mfcc_mean = torch.tensor(mfcc_mean)
         if mfcc_std:
             self.mfcc_std_inv = 1.0 / torch.tensor(mfcc_std)
+        self.audio_pairs = audio_pairs
         self.toy_data = toy_data
 
         self.tracks = tracks_split(load_tracks(data_dir), split)
@@ -128,17 +130,29 @@ class CoverGenerationDataset(Dataset):
             # each epoch.
             ...
             
-        offset = random.randint(0, len(mel))
+        offset1 = random.randint(0, len(mel))
 
-        mel_slice = torch.tensor(mel[offset:offset+self.num_samples()], dtype=torch.float)
-        mel_slice = F.pad(mel_slice, (0, 0, 0, self.num_samples() - mel_slice.shape[0]))
-
+        mel_slice1 = torch.tensor(mel[offset1:offset1+self.num_samples()], dtype=torch.float)
+        mel_slice1 = F.pad(mel_slice1, (0, 0, 0, self.num_samples() - mel_slice1.shape[0]))
         if self.normalize_mfcc:
-            mel_slice = (mel_slice - self.mfcc_mean) * self.mfcc_std_inv
+            mel_slice1 = (mel_slice1 - self.mfcc_mean) * self.mfcc_std_inv
 
-        result = mel_slice,
+        result = mel_slice1,
+
         if self.image_labels is not None:
             result += self.image_labels[idx],
+
+        if self.audio_pairs:
+            max_dist = self.num_samples() * 10
+            offset2 = random.randint(offset1 - max_dist, offset1 + max_dist)
+            offset2 = min(mel.shape[0] - self.num_samples(), max(0, offset2))
+
+            mel_slice2 = torch.tensor(mel[offset2:offset2+self.num_samples()], dtype=torch.float)
+            mel_slice2 = F.pad(mel_slice2, (0, 0, 0, self.num_samples() - mel_slice2.shape[0]))
+            if self.normalize_mfcc:
+                mel_slice2 = (mel_slice2 - self.mfcc_mean) * self.mfcc_std_inv
+
+            result += mel_slice2,
 
         return result
 
