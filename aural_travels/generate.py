@@ -23,7 +23,9 @@ def keyframes(model,
         mel_sample_idx = int(time / mel_frame_duration)
         mel_slice = mel[None, mel_sample_idx:mel_sample_idx+num_mel_samples].to(device)
 
-        yield model.calc_audio_emb(mel_slice)
+        audio_emb = model.calc_audio_emb(mel_slice)
+        image_seq = model.generate_image_seq(audio_emb, top_k=1)
+        yield image_seq
 
         time += time_step
 
@@ -34,9 +36,7 @@ def interpolate(model, keyframes, interframes, topk=False):
     for keyframe in keyframes:
         for i in range(interframes):
             alpha = i/interframes
-            audio_emb = (1.0-alpha) * last_keyframe + alpha * keyframe
-            image_seq = model.generate_image_seq(audio_emb, top_k=1)
-            yield model.image_repr.decode(image_seq)[0]
+            yield model.image_repr.decode(last_keyframe, keyframe, alpha)[0]
 
         last_keyframe = keyframe
 
