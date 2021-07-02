@@ -143,7 +143,7 @@ class CoverGenerationDataset(Dataset):
             result += self.image_labels[idx],
 
         if self.audio_pairs:
-            max_dist = self.num_samples() * 10
+            max_dist = self.num_samples()
             offset2 = random.randint(offset1 - max_dist, offset1 + max_dist)
             offset2 = min(mel.shape[0] - self.num_samples(), max(0, offset2))
 

@@ -138,6 +138,10 @@ if __name__ == '__main__':
                         help='Dropout for FFNN layers',
                         type=float,
                         default=0.1)
+    parser.add_argument('--audio_emb_dropout',
+                        help='Dropout for audio embedding output',
+                        type=float,
+                        default=0.1)
     parser.add_argument('--lr',
                         help='Learning rate for the optimizer',
                         type=float,
@@ -193,8 +197,14 @@ if __name__ == '__main__':
     parser.add_argument('--contrastive_lambda',
                         help='Scaling factor for the contrastive loss',
                         type=float)
+    parser.add_argument('--pull_lambda',
+                        help='Scaling factor for the pull loss',
+                        type=float)
     parser.add_argument('--axial_attention',
                         help='Use axial attention',
+                        action='store_true')
+    parser.add_argument('--use_layer_scale',
+                        help='Use layer scale op',
                         action='store_true')
     parser.add_argument('--image_repr',
                         help='Model to use for image representation',

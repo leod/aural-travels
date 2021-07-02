@@ -18,7 +18,9 @@ class BottleneckGen(nn.Module):
                  num_dec_layers,
                  num_heads,
                  attention_dropout,
-                 ffnn_dropout):
+                 ffnn_dropout,
+                 audio_emb_dropout,
+                 use_layer_scale):
         super().__init__()
 
         self.image_repr = image_repr
@@ -30,6 +32,7 @@ class BottleneckGen(nn.Module):
         self.num_heads = num_heads
         self.attention_dropout = attention_dropout
         self.ffnn_dropout = ffnn_dropout
+        self.audio_emb_dropout = nn.Dropout(audio_emb_dropout)
 
         for param in image_repr.parameters():
             param.requires_grad = False
@@ -39,7 +42,8 @@ class BottleneckGen(nn.Module):
         self.audio_input = nn.Linear(audio_num_features, hidden_size)
         self.audio_pos_emb = nn.Embedding(audio_seq_len, hidden_size)
         self.audio_encoder = TransformerNAT(hidden_size=hidden_size,
-                                            num_layers=num_enc_layers)
+                                            num_layers=num_enc_layers,
+                                            use_layer_scale=use_layer_scale)
 
         self.image_pos_emb = AxialPositionalEmbedding(hidden_size,
                                                       axial_shape=(image_repr.grid_size(),
@@ -74,6 +78,8 @@ class BottleneckGen(nn.Module):
 
             generate_loss = (generate_loss1 + generate_loss2) / 2.0
 
+            pull_loss = F.mse_loss(audio_emb1, audio_emb2)
+
             audio_emb1 = 5.0 * F.normalize(audio_emb1)
             audio_emb2 = 5.0 * F.normalize(audio_emb2)
             cosine_sims = torch.matmul(audio_emb1, audio_emb2.t())
@@ -83,7 +89,7 @@ class BottleneckGen(nn.Module):
             contrastive_loss2 = F.cross_entropy(cosine_sims.t(), targets)
             contrastive_loss = (contrastive_loss1 + contrastive_loss2) / 2.0
 
-            return generate_loss, contrastive_loss
+            return generate_loss, contrastive_loss, pull_loss
 
     def calc_logits(self, audio_emb):
         audio_emb = torch.tile(audio_emb[:, None, :], (self.image_seq_len, 1))
@@ -94,7 +100,8 @@ class BottleneckGen(nn.Module):
     def calc_audio_emb(self, audio_seq):
         audio_emb = self._audio_input(audio_seq)
         audio_emb = self.audio_encoder(audio_emb)
-        return torch.mean(audio_emb, dim=1)
+        audio_emb = torch.mean(audio_emb, dim=1)
+        return self.audio_emb_dropout(audio_emb)
 
     def generate_image_seq(self,
                            audio_emb,

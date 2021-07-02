@@ -67,7 +67,9 @@ def create_model(params, image_repr, dataset):
                               num_dec_layers=params['num_dec_layers'],
                               num_heads=params['num_heads'],
                               attention_dropout=params['attention_dropout'],
-                              ffnn_dropout=params['ffnn_dropout'])
+                              ffnn_dropout=params['ffnn_dropout'],
+                              audio_emb_dropout=params['audio_emb_dropout'],
+                              use_layer_scale=params['use_layer_scale'])
 
     return model
 
@@ -149,6 +151,23 @@ def load_checkpoint(model, optimizer, path=None):
     return model, optimizer, epoch, global_step
 
 
+def calc_loss(params, losses, modes):
+    if 'contrastive_lambda' in params and 'pull_lambda' in params:
+        modes['generate'] += losses[0].item()
+        modes['contrastive'] += losses[1].item()
+        modes['pull'] += losses[2].item()
+
+        generate_lambda = 1.0 - params['contrastive_lambda'] - params['pull_lambda']
+
+        return generate_lambda * losses[0] + \
+            params['contrastive_lambda'] * losses[1] + \
+            params['pull_lambda'] * losses[2]
+    else:
+        mode['generate'] += losses[0].item()
+
+        return losses[0]
+
+
 def evaluate(params, model, dataloader):
     model.eval()
 
@@ -158,15 +177,7 @@ def evaluate(params, model, dataloader):
     with torch.no_grad():
         for batch in tqdm(dataloader):
             losses = model(*batch)
-
-            if 'contrastive_lambda' in params:
-                loss += (1.0 - params['contrastive_lambda']) * losses[0].item() + \
-                        params['contrastive_lambda'] * losses[1].item()
-                loss_mode['generate'] += losses[0].item()
-                loss_mode['contrastive'] += losses[1].item()
-            else:
-                loss += losses[0].item()
-                loss_mode['generate'] += losses[0].item()
+            loss += calc_loss(params, losses, loss_mode)
 
     loss /= len(dataloader)
     for mode in loss_mode.keys():
@@ -197,15 +208,7 @@ def train(params, model, optimizer, dataloaders):
             losses = model(*batch)
             losses = [loss / params['gradient_accumulation'] for loss in losses]
 
-            if 'contrastive_lambda' in params:
-                loss = (1.0 - params['contrastive_lambda']) * losses[0] + \
-                       params['contrastive_lambda'] * losses[1]
-
-                step_loss_mode['generate'] += losses[0].item()
-                step_loss_mode['contrastive'] += losses[1].item()
-            else:
-                loss = losses[0]
-                step_loss_mode['generate'] += losses[0].item()
+            loss = calc_loss(params, losses, step_loss_mode)
 
             accelerator.backward(loss)
 
