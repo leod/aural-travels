@@ -4,6 +4,7 @@ import random
 import numpy as np
 
 import torch
+import torch.nn.functional as F
 
 
 def keyframes(model,
@@ -12,6 +13,9 @@ def keyframes(model,
               sample_rate=22050,
               hop_length=1024,
               num_mel_samples=42,
+              global_features=False,
+              top_k=1,
+              temperature=1,
               device=None):
     mel_frame_duration = hop_length / sample_rate
 
@@ -19,12 +23,17 @@ def keyframes(model,
     duration = mel.shape[0] * mel_frame_duration
     time_step = 1.0 / fps
 
+    mel_global = torch.mean(mel, axis=0).to(device)[None, None, :]
+
     while time < duration:
         mel_sample_idx = int(time / mel_frame_duration)
         mel_slice = mel[None, mel_sample_idx:mel_sample_idx+num_mel_samples].to(device)
+        if global_features:
+            mel_slice = torch.cat([mel_global, mel_slice], axis=1)
+        mel_slice = F.pad(mel_slice, (0, 0, 0, num_mel_samples - mel_slice.shape[1]))
 
         audio_emb = model.calc_audio_emb(mel_slice)
-        image_seq = model.generate_image_seq(audio_emb, top_k=1)
+        image_seq = model.generate_image_seq(audio_emb, top_k=top_k, temperature=temperature)
         yield image_seq
 
         time += time_step

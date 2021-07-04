@@ -69,6 +69,7 @@ def create_model(params, image_repr, dataset):
                               attention_dropout=params['attention_dropout'],
                               ffnn_dropout=params['ffnn_dropout'],
                               audio_emb_dropout=params['audio_emb_dropout'],
+                              input_dropout=params['input_dropout'],
                               use_layer_scale=params['use_layer_scale'])
 
     return model
@@ -123,7 +124,8 @@ def load_dataset(params, split, encodings=None):
                                              n_fft=params['n_fft'],
                                              hop_length=params['hop_length'],
                                              toy_data=params['toy_data'],
-                                             audio_pairs='contrastive_lambda' in params)
+                                             audio_pairs=params['contrastive_lambda'] is not None,
+                                             global_features=params['global_features'])
 
 
 def save_checkpoint(model, optimizer, epoch, global_step, path):
@@ -152,7 +154,7 @@ def load_checkpoint(model, optimizer, path=None):
 
 
 def calc_loss(params, losses, modes):
-    if 'contrastive_lambda' in params and 'pull_lambda' in params:
+    if params['contrastive_lambda'] is not None and params['pull_lambda'] is not None:
         modes['generate'] += losses[0].item()
         modes['contrastive'] += losses[1].item()
         modes['pull'] += losses[2].item()
@@ -163,7 +165,7 @@ def calc_loss(params, losses, modes):
             params['contrastive_lambda'] * losses[1] + \
             params['pull_lambda'] * losses[2]
     else:
-        mode['generate'] += losses[0].item()
+        modes['generate'] += losses[0].item()
 
         return losses[0]
 
