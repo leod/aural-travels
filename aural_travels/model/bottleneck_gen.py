@@ -19,6 +19,7 @@ class BottleneckGen(nn.Module):
                  num_heads,
                  attention_dropout,
                  ffnn_dropout,
+                 input_dropout,
                  audio_emb_dropout,
                  use_layer_scale):
         super().__init__()
@@ -32,6 +33,7 @@ class BottleneckGen(nn.Module):
         self.num_heads = num_heads
         self.attention_dropout = attention_dropout
         self.ffnn_dropout = ffnn_dropout
+        self.input_dropout = nn.Dropout(input_dropout)
         self.audio_emb_dropout = nn.Dropout(audio_emb_dropout)
 
         for param in image_repr.parameters():
@@ -57,6 +59,7 @@ class BottleneckGen(nn.Module):
         assert audio_seq.shape[1] == self.audio_seq_len
         assert audio_seq.shape[2] == self.audio_num_features
 
+        audio_seq = self.input_dropout(audio_seq)
         audio_emb = self.audio_input(audio_seq)
         audio_emb += self.audio_pos_emb(torch.arange(audio_emb.shape[1], device=audio_emb.device))
 

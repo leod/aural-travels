@@ -94,6 +94,7 @@ class CoverGenerationDataset(Dataset):
                  mfcc_mean=MFCC_MEAN,
                  mfcc_std=MFCC_STD,
                  audio_pairs=False,
+                 global_features=False,
                  toy_data=False):
         self.data_dir = data_dir
         self.split = split
@@ -107,6 +108,7 @@ class CoverGenerationDataset(Dataset):
             self.mfcc_mean = torch.tensor(mfcc_mean)
         if mfcc_std:
             self.mfcc_std_inv = 1.0 / torch.tensor(mfcc_std)
+        self.global_features = global_features
         self.audio_pairs = audio_pairs
         self.toy_data = toy_data
 
@@ -131,11 +133,16 @@ class CoverGenerationDataset(Dataset):
             ...
             
         offset1 = random.randint(0, len(mel))
+        mel_global = torch.tensor(np.mean(mel, axis=0), dtype=torch.float)[None, :]
 
         mel_slice1 = torch.tensor(mel[offset1:offset1+self.num_samples()], dtype=torch.float)
-        mel_slice1 = F.pad(mel_slice1, (0, 0, 0, self.num_samples() - mel_slice1.shape[0]))
+        if self.global_features:
+            mel_slice1 = torch.cat([mel_global, mel_slice1], axis=0)
+        
         if self.normalize_mfcc:
             mel_slice1 = (mel_slice1 - self.mfcc_mean) * self.mfcc_std_inv
+
+        mel_slice1 = F.pad(mel_slice1, (0, 0, 0, self.num_samples() - mel_slice1.shape[0]))
 
         result = mel_slice1,
 
@@ -173,4 +180,7 @@ class CoverGenerationDataset(Dataset):
 
     def num_samples(self):
         # FIXME
-        return int(self.sample_secs * self.sample_rate / self.hop_length) - 1
+        num = int(self.sample_secs * self.sample_rate / self.hop_length) - 1
+        if self.global_features:
+            num += 1
+        return num
