@@ -16,6 +16,7 @@ def keyframes(model,
               global_features=False,
               top_k=1,
               temperature=1,
+              latent=None,
               device=None):
     mel_frame_duration = hop_length / sample_rate
 
@@ -33,7 +34,7 @@ def keyframes(model,
         mel_slice = F.pad(mel_slice, (0, 0, 0, num_mel_samples - mel_slice.shape[1]))
 
         audio_emb = model.calc_audio_emb(mel_slice)
-        image_seq = model.generate_image_seq(audio_emb, top_k=top_k, temperature=temperature)
+        image_seq = model.generate_image_seq(audio_emb, top_k=top_k, temperature=temperature, latent=latent)
         yield image_seq
 
         time += time_step
