@@ -89,19 +89,17 @@ class BottleneckGen(nn.Module):
             latents = self.latent_input(self.latents.weight)
             latents = torch.tile(latents, (batch_size, 1))
 
-            audio_emb1 = torch.tile(audio_emb1, (self.num_latents, 1))
-
+            audio_emb1 = torch.repeat_interleave(audio_emb1, self.num_latents, dim=0)
             audio_emb1 = audio_emb1 + latents
 
             logits1 = self.calc_logits(audio_emb1)
             logits1 = torch.transpose(logits1, 1, 2)
 
-            generate_loss1 = F.cross_entropy(logits1,
-                                             torch.tile(target_image_seq, (self.num_latents, 1)),
-                                             reduction='none')
+            target_image_seq = torch.repeat_interleave(target_image_seq, self.num_latents, dim=0)
+            generate_loss1 = F.cross_entropy(logits1, target_image_seq, reduction='none')
+
             generate_loss1 = generate_loss1.mean(dim=-1)
             generate_loss1 = generate_loss1.view(batch_size, self.num_latents)
-
             generate_loss_amin1 = torch.amin(generate_loss1, dim=1).mean().item()
             generate_loss1 = -torch.logsumexp(-generate_loss1, dim=1).mean()
         else:
