@@ -213,6 +213,12 @@ if __name__ == '__main__':
     parser.add_argument('--global_features',
                         help='Global mel features',
                         action='store_true')
+    parser.add_argument('--num_latents',
+                        default=0,
+                        type=int)
+    parser.add_argument('--latent_size',
+                        default=32,
+                        type=int)
     parser.add_argument('--image_repr',
                         help='Model to use for image representation',
                         choices=['dalle', 'vqgan'])

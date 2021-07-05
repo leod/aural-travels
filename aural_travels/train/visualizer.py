@@ -70,7 +70,9 @@ def create_model(params, image_repr, dataset):
                               ffnn_dropout=params['ffnn_dropout'],
                               audio_emb_dropout=params['audio_emb_dropout'],
                               input_dropout=params['input_dropout'],
-                              use_layer_scale=params['use_layer_scale'])
+                              use_layer_scale=params['use_layer_scale'],
+                              num_latents=params['num_latents'],
+                              latent_size=params['latent_size'])
 
     return model
 
@@ -166,6 +168,9 @@ def calc_loss(params, losses, modes):
             params['pull_lambda'] * losses[2]
     else:
         modes['generate'] += losses[0].item()
+
+        if params['num_latents'] > 0:
+            modes['generate_amin'] += losses[1]
 
         return losses[0]
 

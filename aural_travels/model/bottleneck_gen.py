@@ -1,3 +1,5 @@
+import logging
+
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -6,6 +8,10 @@ from axial_positional_embedding import AxialPositionalEmbedding
 from einops import rearrange
 
 from aural_travels.model.transformer_nat import TransformerNAT
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class BottleneckGen(nn.Module):
@@ -21,7 +27,9 @@ class BottleneckGen(nn.Module):
                  ffnn_dropout,
                  input_dropout,
                  audio_emb_dropout,
-                 use_layer_scale):
+                 use_layer_scale,
+                 num_latents,
+                 latent_size):
         super().__init__()
 
         self.image_repr = image_repr
@@ -35,6 +43,8 @@ class BottleneckGen(nn.Module):
         self.ffnn_dropout = ffnn_dropout
         self.input_dropout = nn.Dropout(input_dropout)
         self.audio_emb_dropout = nn.Dropout(audio_emb_dropout)
+        self.num_latents = num_latents
+        self.latent_size = latent_size
 
         for param in image_repr.parameters():
             param.requires_grad = False
@@ -55,6 +65,11 @@ class BottleneckGen(nn.Module):
         self.image_output = nn.Sequential(nn.LayerNorm(hidden_size),
                                           nn.Linear(hidden_size, image_repr.vocab_size()))
 
+        if num_latents > 0:
+            self.latents = nn.Embedding(num_latents, latent_size)
+            self.latents.weight.requires_grad = False
+            self.latent_input = nn.Linear(latent_size, hidden_size)
+
     def _audio_input(self, audio_seq):
         assert audio_seq.shape[1] == self.audio_seq_len
         assert audio_seq.shape[2] == self.audio_num_features
@@ -67,12 +82,35 @@ class BottleneckGen(nn.Module):
 
     def forward(self, audio_seq1, target_image_seq, audio_seq2=None):
         audio_emb1 = self.calc_audio_emb(audio_seq1)
-        logits1 = self.calc_logits(audio_emb1)
-        logits1 = torch.transpose(logits1, 1, 2)
-        generate_loss1 = F.cross_entropy(logits1, target_image_seq)
+
+        if self.num_latents > 0:
+            batch_size = audio_seq1.shape[0]
+
+            latents = self.latent_input(self.latents.weight)
+            latents = torch.tile(latents, (batch_size, 1))
+
+            audio_emb1 = torch.tile(audio_emb1, (self.num_latents, 1))
+
+            audio_emb1 = audio_emb1 + latents
+
+            logits1 = self.calc_logits(audio_emb1)
+            logits1 = torch.transpose(logits1, 1, 2)
+
+            generate_loss1 = F.cross_entropy(logits1,
+                                             torch.tile(target_image_seq, (self.num_latents, 1)),
+                                             reduction='none')
+            generate_loss1 = generate_loss1.mean(dim=-1)
+            generate_loss1 = generate_loss1.view(batch_size, self.num_latents)
+
+            generate_loss_amin1 = torch.amin(generate_loss1, dim=1).mean().item()
+            generate_loss1 = -torch.logsumexp(-generate_loss1, dim=1).mean()
+        else:
+            logits1 = self.calc_logits(audio_emb1)
+            logits1 = torch.transpose(logits1, 1, 2)
+            generate_loss1 = F.cross_entropy(logits1, target_image_seq)
 
         if audio_seq2 is None:
-            return generate_loss1,
+            return generate_loss1, generate_loss_amin1
         else:
             audio_emb2 = self.calc_audio_emb(audio_seq2)
             logits2 = self.calc_logits(audio_emb2)
