@@ -222,6 +222,8 @@ if __name__ == '__main__':
     parser.add_argument('--latent_size',
                         default=32,
                         type=int)
+    parser.add_argument('--random_latents',
+                        action='store_true')
     parser.add_argument('--image_repr',
                         help='Model to use for image representation',
                         choices=['dalle', 'vqgan'])
