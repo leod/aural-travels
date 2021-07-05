@@ -147,7 +147,11 @@ class BottleneckGen(nn.Module):
     def generate_image_seq(self,
                            audio_emb,
                            temperature=1.0,
-                           top_k=1):
+                           top_k=1,
+                           latent=None):
+        if latent is not None:
+            audio_emb = audio_emb + self.latent_input(self.latents(latent))
+
         logits = self.calc_logits(audio_emb)
 
         if top_k > 0:
