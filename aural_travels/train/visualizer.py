@@ -171,8 +171,11 @@ def calc_loss(params, losses, modes):
 
         if params['num_latents'] > 0:
             modes['generate_amin'] += losses[1]
+            modes['push'] += losses[2].item()
 
-        return losses[0]
+            return (1.0 - params['push_lambda']) * losses[0] + params['push_lambda'] * losses[2]
+        else:
+            return losses[0]
 
 
 def evaluate(params, model, dataloader):

@@ -204,6 +204,9 @@ if __name__ == '__main__':
     parser.add_argument('--pull_lambda',
                         help='Scaling factor for the pull loss',
                         type=float)
+    parser.add_argument('--push_lambda',
+                        help='Scaling factor for the push loss',
+                        type=float)
     parser.add_argument('--axial_attention',
                         help='Use axial attention',
                         action='store_true')
