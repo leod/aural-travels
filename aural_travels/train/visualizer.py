@@ -72,7 +72,8 @@ def create_model(params, image_repr, dataset):
                               input_dropout=params['input_dropout'],
                               use_layer_scale=params['use_layer_scale'],
                               num_latents=params['num_latents'],
-                              latent_size=params['latent_size'])
+                              latent_size=params['latent_size'],
+                              random_latents=params['random_latents'])
 
     return model
 

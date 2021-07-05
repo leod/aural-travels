@@ -29,7 +29,8 @@ class BottleneckGen(nn.Module):
                  audio_emb_dropout,
                  use_layer_scale,
                  num_latents,
-                 latent_size):
+                 latent_size,
+                 random_latents):
         super().__init__()
 
         self.image_repr = image_repr
@@ -45,6 +46,7 @@ class BottleneckGen(nn.Module):
         self.audio_emb_dropout = nn.Dropout(audio_emb_dropout)
         self.num_latents = num_latents
         self.latent_size = latent_size
+        self.random_latents = random_latents
 
         for param in image_repr.parameters():
             param.requires_grad = False
@@ -66,8 +68,10 @@ class BottleneckGen(nn.Module):
                                           nn.Linear(hidden_size, image_repr.vocab_size()))
 
         if num_latents > 0:
-            self.latents = nn.Embedding(num_latents, latent_size)
-            self.latents.weight.requires_grad = False
+            if not random_latents:
+                self.latents = nn.Embedding(num_latents, latent_size)
+                self.latents.weight.requires_grad = False
+
             self.latent_input_encoder = nn.Linear(latent_size, hidden_size)
             self.latent_input_decoder = nn.Linear(latent_size, hidden_size)
 
@@ -87,19 +91,28 @@ class BottleneckGen(nn.Module):
 
             audio_input = self._audio_input(audio_seq)
             audio_input = torch.repeat_interleave(audio_input, self.num_latents, dim=0)
-            encoder_latents = self.latent_input_encoder(self.latents.weight)
-            encoder_latents = torch.tile(encoder_latents, (batch_size, 1))[:, None, :]
+            if self.random_latents:
+                random_latents = torch.randn((batch_size * self.num_latents, self.latent_size),
+                                             device=audio_seq.device)
+                encoder_latents = self.latent_input_encoder(random_latents[:, None, :])
+            else:
+                encoder_latents = self.latent_input_encoder(self.latents.weight)
+                encoder_latents = torch.tile(encoder_latents, (batch_size, 1))[:, None, :]
 
             audio_emb = self.audio_encoder(audio_input + encoder_latents)
             audio_emb = torch.mean(audio_emb, dim=1)
             audio_emb = self.audio_emb_dropout(audio_emb)
-            decoder_latents = self.latent_input_decoder(self.latents.weight)
-            decoder_latents = torch.tile(decoder_latents, (batch_size, 1))
+
+            if self.random_latents:
+                decoder_latents = self.latent_input_decoder(random_latents)
+            else:
+                decoder_latents = self.latent_input_decoder(self.latents.weight)
+                decoder_latents = torch.tile(decoder_latents, (batch_size, 1))
 
             audio_emb_view = audio_emb.view(batch_size, self.num_latents, self.hidden_size)
             audio_emb_view = F.normalize(audio_emb_view, dim=-1)
             audio_emb_view_t = torch.transpose(audio_emb_view, 1, 2)
-            push_loss = (torch.bmm(audio_emb_view, audio_emb_view_t) ** 2.0).mean(dim=(0, 1, 2))
+            push_loss = ((torch.bmm(audio_emb_view, audio_emb_view_t) - 0.5) ** 2.0).mean(dim=(0, 1, 2))
 
             logits = self.calc_logits(audio_emb + decoder_latents)
             logits = torch.transpose(logits, 1, 2)
@@ -153,7 +166,7 @@ class BottleneckGen(nn.Module):
     def calc_audio_emb(self, audio_seq, latent=None):
         audio_input = self._audio_input(audio_seq)
         if latent is not None:
-            audio_input = audio_input + self.latent_input_encoder(self.latents(latent))
+            audio_input = audio_input + self.latent_input_encoder(latent)
 
         audio_emb = self.audio_encoder(audio_input)
         audio_emb = torch.mean(audio_emb, dim=1)
@@ -165,7 +178,7 @@ class BottleneckGen(nn.Module):
                            top_k=1,
                            latent=None):
         if latent is not None:
-            audio_emb = audio_emb + self.latent_input_decoder(self.latents(latent))
+            audio_emb = audio_emb + self.latent_input_decoder(latent)
 
         logits = self.calc_logits(audio_emb)
 
