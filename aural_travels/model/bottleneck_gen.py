@@ -68,7 +68,8 @@ class BottleneckGen(nn.Module):
         if num_latents > 0:
             self.latents = nn.Embedding(num_latents, latent_size)
             self.latents.weight.requires_grad = False
-            self.latent_input = nn.Linear(latent_size, hidden_size)
+            self.latent_input_encoder = nn.Linear(latent_size, hidden_size)
+            self.latent_input_decoder = nn.Linear(latent_size, hidden_size)
 
     def _audio_input(self, audio_seq):
         assert audio_seq.shape[1] == self.audio_seq_len
@@ -80,55 +81,61 @@ class BottleneckGen(nn.Module):
 
         return audio_emb
 
-    def forward(self, audio_seq1, target_image_seq, audio_seq2=None):
-        audio_emb1 = self.calc_audio_emb(audio_seq1)
-
+    def forward(self, audio_seq, target_image_seq, audio_seq2=None):
         if self.num_latents > 0:
-            batch_size = audio_seq1.shape[0]
+            batch_size = audio_seq.shape[0]
 
-            latents = self.latent_input(self.latents.weight)
-            latents = torch.tile(latents, (batch_size, 1))
+            audio_input = self._audio_input(audio_seq)
+            audio_input = torch.repeat_interleave(audio_input, self.num_latents, dim=0)
+            encoder_latents = self.latent_input_encoder(self.latents.weight)
+            encoder_latents = torch.tile(encoder_latents, (batch_size, 1))[:, None, :]
 
-            audio_emb1 = torch.repeat_interleave(audio_emb1, self.num_latents, dim=0)
-            audio_emb1 = audio_emb1 + latents
+            audio_emb = self.audio_encoder(audio_input + encoder_latents)
+            audio_emb = torch.mean(audio_emb, dim=1)
+            audio_emb = self.audio_emb_dropout(audio_emb)
+            decoder_latents = self.latent_input_decoder(self.latents.weight)
+            decoder_latents = torch.tile(decoder_latents, (batch_size, 1))
 
-            logits1 = self.calc_logits(audio_emb1)
-            logits1 = torch.transpose(logits1, 1, 2)
+            logits = self.calc_logits(audio_emb + decoder_latents)
+            logits = torch.transpose(logits, 1, 2)
 
             target_image_seq = torch.repeat_interleave(target_image_seq, self.num_latents, dim=0)
-            generate_loss1 = F.cross_entropy(logits1, target_image_seq, reduction='none')
+            generate_loss = F.cross_entropy(logits, target_image_seq, reduction='none')
 
-            generate_loss1 = generate_loss1.mean(dim=-1)
-            generate_loss1 = generate_loss1.view(batch_size, self.num_latents)
-            generate_loss_amin1 = torch.amin(generate_loss1, dim=1).mean().item()
-            generate_loss1 = -torch.logsumexp(-generate_loss1, dim=1).mean()
+            generate_loss = generate_loss.mean(dim=-1)
+            generate_loss = generate_loss.view(batch_size, self.num_latents)
+            generate_loss_amin = torch.amin(generate_loss, dim=1).mean().item()
+            generate_loss = -torch.logsumexp(-generate_loss, dim=1).mean()
         else:
-            logits1 = self.calc_logits(audio_emb1)
-            logits1 = torch.transpose(logits1, 1, 2)
-            generate_loss1 = F.cross_entropy(logits1, target_image_seq)
+            audio_emb = self.calc_audio_emb(audio_seq)
+
+            logits = self.calc_logits(audio_emb)
+            logits = torch.transpose(logits, 1, 2)
+            generate_loss = F.cross_entropy(logits, target_image_seq)
 
         if audio_seq2 is None:
-            return generate_loss1, generate_loss_amin1
+            return generate_loss, generate_loss_amin
         else:
-            audio_emb2 = self.calc_audio_emb(audio_seq2)
-            logits2 = self.calc_logits(audio_emb2)
-            logits2 = torch.transpose(logits2, 1, 2)
-            generate_loss2 = F.cross_entropy(logits2, target_image_seq)
+            assert False
+        #    audio_emb2 = self.calc_audio_emb(audio_seq2)
+        #    logits2 = self.calc_logits(audio_emb2)
+        #    logits2 = torch.transpose(logits2, 1, 2)
+        #    generate_loss2 = F.cross_entropy(logits2, target_image_seq)
 
-            generate_loss = (generate_loss1 + generate_loss2) / 2.0
+        #    generate_loss = (generate_loss1 + generate_loss2) / 2.0
 
-            pull_loss = F.mse_loss(audio_emb1, audio_emb2)
+        #    pull_loss = F.mse_loss(audio_emb1, audio_emb2)
 
-            audio_emb1 = 5.0 * F.normalize(audio_emb1)
-            audio_emb2 = 5.0 * F.normalize(audio_emb2)
-            cosine_sims = torch.matmul(audio_emb1, audio_emb2.t())
+        #    audio_emb1 = 5.0 * F.normalize(audio_emb1)
+        #    audio_emb2 = 5.0 * F.normalize(audio_emb2)
+        #    cosine_sims = torch.matmul(audio_emb1, audio_emb2.t())
 
-            targets = torch.arange(audio_seq1.shape[0], device=audio_seq1.device)
-            contrastive_loss1 = F.cross_entropy(cosine_sims, targets)
-            contrastive_loss2 = F.cross_entropy(cosine_sims.t(), targets)
-            contrastive_loss = (contrastive_loss1 + contrastive_loss2) / 2.0
+        #    targets = torch.arange(audio_seq1.shape[0], device=audio_seq1.device)
+        #    contrastive_loss1 = F.cross_entropy(cosine_sims, targets)
+        #    contrastive_loss2 = F.cross_entropy(cosine_sims.t(), targets)
+        #    contrastive_loss = (contrastive_loss1 + contrastive_loss2) / 2.0
 
-            return generate_loss, contrastive_loss, pull_loss
+        #    return generate_loss, contrastive_loss, pull_loss
 
     def calc_logits(self, audio_emb):
         audio_emb = torch.tile(audio_emb[:, None, :], (self.image_seq_len, 1))
@@ -136,9 +143,12 @@ class BottleneckGen(nn.Module):
         image_emb = self.image_decoder(audio_emb)
         return self.image_output(image_emb)
 
-    def calc_audio_emb(self, audio_seq):
-        audio_emb = self._audio_input(audio_seq)
-        audio_emb = self.audio_encoder(audio_emb)
+    def calc_audio_emb(self, audio_seq, latent=None):
+        audio_input = self._audio_input(audio_seq)
+        if latent is not None:
+            audio_input = audio_input + self.latent_input_encoder(self.latents(latent))
+
+        audio_emb = self.audio_encoder(audio_input)
         audio_emb = torch.mean(audio_emb, dim=1)
         return self.audio_emb_dropout(audio_emb)
 
@@ -148,7 +158,7 @@ class BottleneckGen(nn.Module):
                            top_k=1,
                            latent=None):
         if latent is not None:
-            audio_emb = audio_emb + self.latent_input(self.latents(latent))
+            audio_emb = audio_emb + self.latent_input_decoder(self.latents(latent))
 
         logits = self.calc_logits(audio_emb)
 
