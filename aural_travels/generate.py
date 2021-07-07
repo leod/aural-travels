@@ -33,7 +33,7 @@ def keyframes(model,
             mel_slice = torch.cat([mel_global, mel_slice], axis=1)
         mel_slice = F.pad(mel_slice, (0, 0, 0, num_mel_samples - mel_slice.shape[1]))
 
-        audio_emb = model.calc_audio_emb(mel_slice)
+        audio_emb = model.calc_audio_emb(mel_slice, latent=latent)
         image_seq = model.generate_image_seq(audio_emb, top_k=top_k, temperature=temperature, latent=latent)
         yield image_seq
 

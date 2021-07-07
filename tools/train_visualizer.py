@@ -207,6 +207,9 @@ if __name__ == '__main__':
     parser.add_argument('--push_lambda',
                         help='Scaling factor for the push loss',
                         type=float)
+    parser.add_argument('--var_lambda',
+                        help='Scaling factor for the var loss',
+                        type=float)
     parser.add_argument('--axial_attention',
                         help='Use axial attention',
                         action='store_true')

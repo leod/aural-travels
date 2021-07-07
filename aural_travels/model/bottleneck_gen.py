@@ -118,14 +118,28 @@ class BottleneckGen(nn.Module):
             logits = torch.transpose(logits, 1, 2)
 
             target_image_seq = torch.repeat_interleave(target_image_seq, self.num_latents, dim=0)
-            generate_loss = F.cross_entropy(logits, target_image_seq, reduction='none')
+            generate_losses = F.cross_entropy(logits, target_image_seq, reduction='none')
 
-            generate_loss = generate_loss.mean(dim=-1)
-            generate_loss = generate_loss.view(batch_size, self.num_latents)
-            generate_loss_amin = torch.amin(generate_loss, dim=1).mean().item()
-            generate_loss = -torch.logsumexp(-generate_loss, dim=1).mean()
+            generate_losses = generate_losses.mean(dim=-1)
+            generate_losses = generate_losses.view(batch_size, self.num_latents)
+            generate_loss_amin = torch.amin(generate_losses, dim=1).mean().item()
 
-            return generate_loss, generate_loss_amin, push_loss
+
+            #var_loss = 1-1/(1+(-0.5*generate_loss.var(dim=-1).mean()).exp())
+            var_loss = -generate_losses.std(dim=-1).mean()
+
+            #generate_loss = -torch.logsumexp(-10.0*generate_loss, dim=1).mean()
+            alpha = 5
+            generate_loss = -(torch.sum(-generate_losses * (-generate_losses*alpha).exp(), dim=1) / torch.sum((-generate_losses*alpha).exp(), dim=1)).mean()
+
+            print('generate_losses', generate_losses)
+            print('var_loss', var_loss.item())
+            print('generate_loss', generate_loss.item())
+            print('mean', torch.mean(generate_losses, dim=1).mean().item())
+            print('min', torch.amin(generate_losses, dim=1).mean().item())
+            print('max', torch.amax(generate_losses, dim=1).mean().item())
+
+            return generate_loss, generate_loss_amin, push_loss, var_loss
         else:
             audio_emb = self.calc_audio_emb(audio_seq)
 
