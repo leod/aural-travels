@@ -173,8 +173,12 @@ def calc_loss(params, losses, modes):
         if params['num_latents'] > 0:
             modes['generate_amin'] += losses[1]
             modes['push'] += losses[2].item()
+            modes['var'] += losses[3].item()
 
-            return (1.0 - params['push_lambda']) * losses[0] + params['push_lambda'] * losses[2]
+            generate_lambda = 1.0 - params['push_lambda'] - params['var_lambda']
+            return generate_lambda * losses[0] + \
+                params['push_lambda'] * losses[2] + \
+                params['var_lambda'] * losses[3]
         else:
             return losses[0]
 
