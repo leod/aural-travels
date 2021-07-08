@@ -73,7 +73,8 @@ def create_model(params, image_repr, dataset):
                               use_layer_scale=params['use_layer_scale'],
                               num_latents=params['num_latents'],
                               latent_size=params['latent_size'],
-                              random_latents=params['random_latents'])
+                              random_latents=params['random_latents'],
+                              generate_alpha=params['generate_alpha'])
 
     return model
 
