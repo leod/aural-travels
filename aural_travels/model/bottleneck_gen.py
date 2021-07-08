@@ -30,7 +30,8 @@ class BottleneckGen(nn.Module):
                  use_layer_scale,
                  num_latents,
                  latent_size,
-                 random_latents):
+                 random_latents,
+                 generate_alpha):
         super().__init__()
 
         self.image_repr = image_repr
@@ -47,6 +48,7 @@ class BottleneckGen(nn.Module):
         self.num_latents = num_latents
         self.latent_size = latent_size
         self.random_latents = random_latents
+        self.generate_alpha = generate_alpha
 
         for param in image_repr.parameters():
             param.requires_grad = False
@@ -129,8 +131,9 @@ class BottleneckGen(nn.Module):
             var_loss = -generate_losses.std(dim=-1).mean()
 
             #generate_loss = -torch.logsumexp(-10.0*generate_loss, dim=1).mean()
-            alpha = 5
-            generate_loss = -(torch.sum(-generate_losses * (-generate_losses*alpha).exp(), dim=1) / torch.sum((-generate_losses*alpha).exp(), dim=1)).mean()
+            alpha = self.generate_alpha
+            generate_loss = -(torch.sum(-generate_losses * (-generate_losses*alpha).exp(), dim=1) \
+                / torch.sum((-generate_losses*alpha).exp(), dim=1)).mean()
 
             print('generate_losses', generate_losses)
             print('var_loss', var_loss.item())
