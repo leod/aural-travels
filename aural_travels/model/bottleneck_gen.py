@@ -94,8 +94,11 @@ class BottleneckGen(nn.Module):
             audio_input = self._audio_input(audio_seq)
             audio_input = torch.repeat_interleave(audio_input, self.num_latents, dim=0)
             if self.random_latents:
-                random_latents = torch.randn((batch_size * self.num_latents, self.latent_size),
+                #random_latents = torch.randn((batch_size * self.num_latents, self.latent_size),
+                #                             device=audio_seq.device)
+                random_latents = torch.randn((self.num_latents, self.latent_size),
                                              device=audio_seq.device)
+                random_latents = torch.tile(random_latents, (batch_size, 1))
                 encoder_latents = self.latent_input_encoder(random_latents[:, None, :])
             else:
                 encoder_latents = self.latent_input_encoder(self.latents.weight)
@@ -193,11 +196,15 @@ class BottleneckGen(nn.Module):
                            audio_emb,
                            temperature=1.0,
                            top_k=1,
-                           latent=None):
+                           latent=None,
+                           ref=None):
         if latent is not None:
             audio_emb = audio_emb + self.latent_input_decoder(latent)
 
         logits = self.calc_logits(audio_emb)
+
+        if ref is not None:
+            print('loss', F.cross_entropy(torch.transpose(logits, 1, 2), ref, reduction='mean'))
 
         if top_k > 0:
             indices_to_remove = logits < torch.topk(logits, top_k)[0][..., -1, None]

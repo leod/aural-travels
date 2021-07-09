@@ -34,7 +34,7 @@ MFCC_STD = [147.8568,  55.7701,  34.7229,  22.2324,  17.8979,  16.1369,  14.1328
 
 
 def load_tracks(data_dir):
-    with open(os.path.join(data_dir, 'scdata.json')) as f:
+    with open(os.path.join(data_dir, 'scdata.dedupe_covers.json')) as f:
         return list(json.load(f).values())
 
 
